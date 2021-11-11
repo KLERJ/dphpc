@@ -1,4 +1,4 @@
-SIZE=LARGE
+SIZE=SMALL
 CFLAGS=-Wall -Wextra -Wno-comment -O3 -I polybench/utilities
 DUMP=
 EXTRA_FLAGS=-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME -D${SIZE}_DATASET ${DUMP}
@@ -9,6 +9,7 @@ BINARY_DERICHE=${BIN_DIR}/deriche
 BINARY_DERICHE_OMP=${BIN_DIR}/deriche_omp
 BINARY_SEIDEL2D_OMP=${BIN_DIR}/seidel-2d_omp
 BINARY_HEAT3D_OMP=${BIN_DIR}/heat-3d_omp
+BINARY_HEAT3D_MPI=${BIN_DIR}/heat-3d_mpi
 
 $(shell mkdir -p bin)
 UNAME := $(shell uname)
@@ -23,7 +24,7 @@ MPI_CC=mpicc
 
 OBJS=polybench.o
 
-all: deriche deriche_omp seidel-2d_omp heat-3d_omp
+all: deriche deriche_omp seidel-2d_omp heat-3d_omp heat-3d_mpi
 
 .PHONY: clean run
 
@@ -41,6 +42,9 @@ seidel-2d_omp: ${OBJS}
 
 heat-3d_omp: ${OBJS}
 	${CC} ${CFLAGS} ${OBJS} -fopenmp -o ${BINARY_HEAT3D_OMP} ${SRC_DIR}/heat-3d/heat-3d_omp.c -I ${SRC_DIR}/heat-3d ${EXTRA_FLAGS}
+
+heat-3d_mpi: ${OBJS}
+	${MPI_CC} ${CFLAGS} ${OBJS} ${SRC_DIR}/heat-3d/heat-3d_mpi.c  -o ${BINARY_HEAT3D_MPI} ${EXTRA_FLAGS}
 
 polybench.o:
 	${CC} ${CFLAGS} ${EXTRA_FLAGS} -c polybench/utilities/polybench.c
