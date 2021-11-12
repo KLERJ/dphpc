@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+
+# CTAGS file
+tags
+
+# binaries
+deriche
