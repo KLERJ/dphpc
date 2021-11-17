@@ -9,8 +9,14 @@ datasets=('MINI_DATASET' 'SMALL_DATASET' 'MEDIUM_DATASET' 'LARGE_DATASET' 'EXTRA
 # it might be possible to set custom W and H values at compile time with -D W=1080 -D H=1920 ?
 cd "$PB_ROOT"
 
+if [ -z "$1" ]
+then
+  idx=0
+else
+  idx=$1
+fi
 
-dataset=${datasets[0]}
+dataset=${datasets[${idx}]}
 echo $dataset
 gcc -O3 -I utilities -I stencils/seidel-2d utilities/polybench.c stencils/seidel-2d/seidel-2d.c \
  -DPOLYBENCH_DUMP_ARRAYS -D${dataset} -o seidel-2d_ref
