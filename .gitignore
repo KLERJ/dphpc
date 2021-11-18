@@ -37,7 +37,12 @@ tags
 
 # binaries
 # deriche
+bin/
+polybench.o
 
 # IDEs
 .vscode
 .idea
+
+# Compilation database
+compile_commands.json
