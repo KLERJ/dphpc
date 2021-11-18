@@ -23,6 +23,7 @@
 
 
 #define MPI_DATATYPE MPI_DOUBLE
+#define IDX(ARRAY, X, Y ,Z, NY, NZ) ((ARRAY) + ((X) * (NY) * (NZ)) + ((Y) * (NZ)) + (Z))
 
 /* Array initialization. */
 static
@@ -36,8 +37,20 @@ void init_array (int n,
   for (i = 0; i < n; i++)
     for (j = 0; j < n; j++)
       for (k = 0; k < n; k++)
-        // A[i][j][k] = B[i][j][k] = (DATA_TYPE) (i + j + (n-k))* 10 / (n);
-        A[i][j][k] = B[i][j][k] = (DATA_TYPE) c++;
+        A[i][j][k] = B[i][j][k] = (DATA_TYPE) (i + j + (n-k))* 10 / (n);
+}
+
+static
+void my_init_array (int nx, int ny, int nz,
+		 DATA_TYPE *A)
+{
+  int i, j, k;
+  int c = 0;
+
+  for (i = 0; i < nx; i++)
+    for (j = 0; j < ny; j++)
+      for (k = 0; k < nz; k++)
+        *IDX(A, i,j, k, ny, nz) = (DATA_TYPE) c++;
 }
 
 
@@ -68,9 +81,31 @@ void print_array(int n,
   // POLYBENCH_DUMP_FINISH;
 }
 
+static
+void my_print_array(int nx, int ny, int nz,
+		 DATA_TYPE *A)
 
+{
+  int i, j, k;
 
-#define IDX(ARRAY, X, Y ,Z, ny, nz) (ARRAY + X * ny * nz + Y * nx + Z)
+  // POLYBENCH_DUMP_START;
+  // POLYBENCH_DUMP_BEGIN("A");
+  
+  
+  for (i = 0; i < nx; i++) {
+    for (k = 0; k < nz; k++) {
+      for (j = 0; j < ny; j++) {
+        //  if ((i * n * n + j * n + k) % 20 == 0) fprintf(POLYBENCH_DUMP_TARGET, "\n");
+         printf(DATA_PRINTF_MODIFIER, *IDX(A, i, j, k, ny, nz));
+      }
+      printf("\n");
+    }
+      printf("\n\n");
+  }
+  // POLYBENCH_DUMP_END("A");
+  // POLYBENCH_DUMP_FINISH;
+}
+
 
 /* Main computational kernel. The whole function will be timed,
    including the call and return. */
@@ -98,7 +133,7 @@ void compute_step_kernel_heat_3d(int nx,
   }
 }
 
-#define N 4
+#define N 6
 
 int main(int argc, char** argv)
 {
@@ -175,8 +210,8 @@ int main(int argc, char** argv)
   
   
   // Local cubes include face of neighbor
-  A = (double*)calloc((sxx) * (syy) * (szz), sizeof(double));
-  B = (double*)calloc((sxx) * (syy) * (szz), sizeof(double));
+  A = (double*)calloc(ssx* ssy * ssz, sizeof(double));
+  B = (double*)calloc(ssx* ssy * ssz, sizeof(double));
 
   int orig_sizes[3] = {N, N, N};
   MPI_Datatype subCubeSend;
@@ -185,25 +220,40 @@ int main(int argc, char** argv)
   MPI_Datatype xyFace;
   MPI_Datatype xzFace;
   MPI_Datatype yzFace;
+  MPI_Datatype yRow;
+
+  MPI_Type_vector(sy, 1, ssz, MPI_DATATYPE, &yRow);
 
   int starts[3] = {0,0,0};
   MPI_Type_create_subarray(3, orig_sizes, sizes, starts, MPI_ORDER_C, MPI_DATATYPE, &subCubeSend);
-  MPI_Type_contiguous((sxx*syy*szz), MPI_DATATYPE, &subCubeRcv);
+  // MPI_Type_contiguous((sxx*syy*szz), MPI_DATATYPE, &subCubeRcv);
   // MPI_Type_create_subarray()
 
   // A[x][y][0] strided with sx*sy elements, each of length 1. Offset sz  
-  MPI_Type_vector(sx*sy, 1, sz, MPI_DATATYPE, &xyFace);
+  MPI_Type_create_hvector(sx, 1, (ssy * ssz) * sizeof(MPI_DATATYPE), yRow, &xyFace);
   
-  // A[x][0][z] strided with sx*sz elements in blocks of sz, strided by sz*sy
-  MPI_Type_vector(sx*sz, sz, sz*sy, MPI_DATATYPE, &xzFace);
+
+
+
+
+
+
+
+
+
+
+
+  // A[x][0][z] strided with ssx*ssz elements in blocks of sz, strided by ssz*ssy
+  MPI_Type_vector(sx, sz, ssz*ssy, MPI_DATATYPE, &xzFace);
   
-  // A[0][y][z] is contiguous
-  MPI_Type_contiguous(sy*sz, MPI_DATATYPE, &yzFace);
+  // A[0][y][z] sy* sz elements in blocks of sz strided by ssz
+  MPI_Type_vector(sy, sz, ssz,  MPI_DATATYPE, &yzFace);
   
 
   
   MPI_Type_commit(&subCubeSend);
-  MPI_Type_commit(&subCubeRcv);
+  // MPI_Type_commit(&subCubeRcv);
+  MPI_Type_commit(&yRow);
   MPI_Type_commit(&xyFace);
   MPI_Type_commit(&xzFace);
   MPI_Type_commit(&yzFace);
@@ -216,12 +266,27 @@ int main(int argc, char** argv)
     // POLYBENCH_3D_ARRAY_DECL(B, DATA_TYPE, N, N, N, n, n, n);
     full_cube = (double*)calloc(nx * ny * nz, sizeof(double));
     // full_B = (double*)calloc(nx * ny * nz, sizeof(double));
-    init_array(nx, full_cube, full_cube);
-    print_array(nx, full_cube);
+    //my_init_array(nx, ny, nz, full_cube);
+    // print_array(nx, full_cube);
+
+    //Test
+    // my_init_array(ssx, ssy, ssz, A);
+    printf("IDX(A, 0, 1, 1, ssy, ssz): %f\n", *IDX(A, 0, 1, 1, ssy, ssz));
+
+    // MPI_Send(IDX(A, 0, 1, 1, ssy, ssz), 1, yzFace, 1, 0, MPI_COMM_WORLD);
+    // MPI_Send(IDX(A, 1, 0, 1, ssy, ssz), 1, xzFace, 1, 0, MPI_COMM_WORLD);
+    // MPI_Send(IDX(A, 1, 1, ssz-1, ssy, ssz), 1, xyFace, 1, 0, MPI_COMM_WORLD);
+  } else if(rank == 1){
+    MPI_Status status;
+    // MPI_Recv(IDX(A, 0, 1, 1, ssy, ssz), 1, yzFace, 0, 0, MPI_COMM_WORLD, &status);
+    // MPI_Recv(IDX(A, 1, ssy-2, 1, ssy, ssz), 1, xzFace, 0, 0, MPI_COMM_WORLD, &status);
+    // MPI_Recv(IDX(A, 1, 1, 0 , ssy, ssz), 1, xyFace, 0, 0, MPI_COMM_WORLD, &status);
+
+
   }
     /* Initialize array(s). */
     // init_array (n, POLYBENCH_ARRAY(full_A), POLYBENCH_ARRAY(full_B));
-  int *sendcounts = malloc(sizeof(int)*p);
+  /*int *sendcounts = malloc(sizeof(int)*p);
   int *displs = malloc(sizeof(int)*p);
   for(int i = 0; i < p; i++){
     sendcounts[i] = 1;
@@ -230,33 +295,33 @@ int main(int argc, char** argv)
   
   MPI_Barrier(MPI_COMM_WORLD);
 
-  MPI_Scatterv(full_cube, sendcounts, displs, subCubeRcv, IDX(A, 1, 1, 1, sy, sz), 1, subCubeRcv, 0, MPI_COMM_WORLD );
+  // MPI_Scatterv(full_cube, sendcounts, displs, subCubeRcv, IDX(A, 1, 1, 1, sy, sz), 1, subCubeRcv, 0, MPI_COMM_WORLD );
   // MPI_Barier();
 
   free(sendcounts);
-  free(displs);
+  free(displs);*/
   
  
   if (rank == 0){
     printf("Scattered 0:\n");
-    print_array(sx+2, A);
+    my_print_array(ssx, ssy, ssz, A);
   }
   MPI_Barrier(MPI_COMM_WORLD);
   if (rank == 1){
     printf("Scattered 1:\n");
-    print_array(sx+2, A);
+    my_print_array(ssx, ssy, ssz, A);
   }
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (rank == 2){
-    printf("Scattered 2:\n");
-    print_array(sx+2, A);
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (rank == 3){
-    printf("Scattered 3:\n");
-    print_array(sx+2, A);
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
+  // MPI_Barrier(MPI_COMM_WORLD);
+  // if (rank == 2){
+  //   printf("Scattered 2:\n");
+  //   print_array(sx+2, A);
+  // }
+  // MPI_Barrier(MPI_COMM_WORLD);
+  // if (rank == 3){
+  //   printf("Scattered 3:\n");
+  //   print_array(sx+2, A);
+  // }
+  // MPI_Barrier(MPI_COMM_WORLD);
 
   
 
@@ -267,20 +332,20 @@ int main(int argc, char** argv)
 
   /* Run kernel. */
 
-  for (int t = 1; t <= tsteps; t++) {
-    MPI_Request requests[2*6];
+  // for (int t = 1; t <= tsteps; t++) {
+  //   MPI_Request requests[2*6];
 
-    // MPI_Isend();
+  //   // MPI_Isend();
 
-    compute_step_kernel_heat_3d(sx+2, sy+2, sz+2, A, B);
+  //   compute_step_kernel_heat_3d(ssx, ssy, ssz, A, B);
     
-    compute_step_kernel_heat_3d(sx+2, sy+2, sz+2, B, A);
+  //   compute_step_kernel_heat_3d(ssx, ssy, ssz, B, A);
 
 
-    // double *tmp = A;
-    // A = B;
-    // B = tmp;
-  }
+  //   // double *tmp = A;
+  //   // A = B;
+  //   // B = tmp;
+  // }
 
   /* Stop and print timer. */
   polybench_stop_instruments;
