@@ -1,5 +1,5 @@
 CFLAGS=-Wall -Wextra -Wno-comment -O3 -I ${SRC_DIR}
-SIZE=LARGE
+SIZE=MINI
 BINARY_DERICHE=deriche
 BINARY_SEIDEL2D_OMP=seidel-2d_omp
 BINARY_HEAT3D_OMP=heat-3d_omp
@@ -12,8 +12,8 @@ all: deriche seidel-2d_omp heat-3d_omp
 
 .PHONY: deriche run
 
-deriche:
-	${MPI_CC} ${CFLAGS} ${SRC_DIR}/deriche/deriche.c -DMINI_DATASET -o ${BINARY_DERICHE}
+deriche_mpi:
+	${MPI_CC} ${CFLAGS} ${SRC_DIR}/deriche/deriche_mpi.c -DMINI_DATASET -o ${BINARY_DERICHE}
 
 run: deriche
 	mpiexec -np 2 ./${BINARY_DERICHE}
