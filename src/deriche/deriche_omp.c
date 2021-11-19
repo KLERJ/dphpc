@@ -118,6 +118,8 @@ static void kernel_deriche(int w, int h, DATA_TYPE alpha,
     }
   }
 
+#pragma omp parallel for default(none) private(j)                              \
+    shared(w, h, c1, imgOut, y1, y2)
   for (i = 0; i < _PB_W; i++)
     for (j = 0; j < _PB_H; j++) {
       imgOut[i][j] = c1 * (y1[i][j] + y2[i][j]);
@@ -155,6 +157,8 @@ static void kernel_deriche(int w, int h, DATA_TYPE alpha,
     }
   }
 
+#pragma omp parallel for default(none) private(j)                              \
+    shared(w, h, c2, imgOut, y1, y2)
   for (i = 0; i < _PB_W; i++)
     for (j = 0; j < _PB_H; j++)
       imgOut[i][j] = c2 * (y1[i][j] + y2[i][j]);
