@@ -18,54 +18,60 @@
 #define ROOT_RANK 0
 
 /* Include polybench common header. */
-/* #include <polybench.h> */
+#include <polybench.h>
 
-/* static void malloc_2d_array(int rows, int cols, double **array) {} */
+/* static void malloc_2d_array(int rows, int cols, DATA_TYPE **array) {} */
 
 /* Array initialization. */
-static void init_array(int w, int h, double *alpha, double input_image[][w]) {
+static void init_array(int w, int h, DATA_TYPE *alpha,
+                       DATA_TYPE POLYBENCH_2D(imgIn, W, H, w, h),
+                       DATA_TYPE POLYBENCH_2D(imgOut, W, H, w, h)) {
+  int i, j;
+
   *alpha = 0.25; // parameter of the filter
 
   // input should be between 0 and 1 (grayscale image pixel)
-  for (int i = 0; i < w; i++) {
-    for (int j = 0; j < h; j++) {
-      input_image[i][j] = (double)((313 * i + 991 * j) % 65536) / 65535.0f;
-    }
-  }
+  for (i = 0; i < w; i++)
+    for (j = 0; j < h; j++)
+      imgIn[i][j] = (DATA_TYPE)((313 * i + 991 * j) % 65536) / 65535.0f;
 }
 
 /* DCE code. Must scan the entire live-out data.
    Can be used also to check the correctness of the output. */
-static void print_array(int width, int height, double **output_image) {
+static void print_array(int w, int h,
+                        DATA_TYPE POLYBENCH_2D(imgOut, W, H, w, h))
+
+{
   int i, j;
 
-  printf("output_image");
-  for (i = 0; i < width; i++)
-    for (j = 0; j < height; j++) {
-      // Make it more readable by inserting newlines
-      if ((i * height + j) % 20 == 0) {
-        printf("\n");
-      }
-      printf("%lf ", output_image[i][j]);
+  POLYBENCH_DUMP_START;
+  POLYBENCH_DUMP_BEGIN("imgOut");
+  for (i = 0; i < w; i++)
+    for (j = 0; j < h; j++) {
+      if ((i * h + j) % 20 == 0)
+        fprintf(POLYBENCH_DUMP_TARGET, "\n");
+      fprintf(POLYBENCH_DUMP_TARGET, DATA_PRINTF_MODIFIER, imgOut[i][j]);
     }
-  printf("output image");
+  POLYBENCH_DUMP_END("imgOut");
+  POLYBENCH_DUMP_FINISH;
 }
 
-static void deriche_horizontal(int w, int h, double alpha,
-                               double input_image[][w],
-                               double output_image[][w], double y1[][w],
-                               double y2[][w]) {
+static void deriche_horizontal(int w, int h, DATA_TYPE alpha,
+                               DATA_TYPE POLYBENCH_2D(imgIn, W, H, w, h),
+                               DATA_TYPE POLYBENCH_2D(imgOut, W, H, w, h),
+                               DATA_TYPE POLYBENCH_2D(y1, W, H, w, h),
+                               DATA_TYPE POLYBENCH_2D(y2, W, H, w, h)) {
 
   // Declare variables
   int i, j;
-  double xm1, ym1, ym2;
-  double xp1, xp2;
-  /* double tp1, tp2; */
-  double yp1, yp2;
+  DATA_TYPE xm1, ym1, ym2;
+  DATA_TYPE xp1, xp2;
+  /* DATA_TYPE tp1, tp2; */
+  DATA_TYPE yp1, yp2;
 
-  double k;
-  double a1, a2, a3, a4;
-  double b1, b2, c1, c2;
+  DATA_TYPE k;
+  DATA_TYPE a1, a2, a3, a4;
+  DATA_TYPE b1, b2, c1, c2;
 
   // Initialize variables
   k = (1.0 - exp(-alpha)) * (1.0 - exp(-alpha)) /
@@ -85,8 +91,8 @@ static void deriche_horizontal(int w, int h, double alpha,
     ym2 = 0.0;
     xm1 = 0.0;
     for (j = 0; j < h; j++) {
-      y1[i][j] = a1 * input_image[i][j] + a2 * xm1 + b1 * ym1 + b2 * ym2;
-      xm1 = input_image[i][j];
+      y1[i][j] = a1 * imgIn[i][j] + a2 * xm1 + b1 * ym1 + b2 * ym2;
+      xm1 = imgIn[i][j];
       ym2 = ym1;
       ym1 = y1[i][j];
     }
@@ -100,7 +106,7 @@ static void deriche_horizontal(int w, int h, double alpha,
     for (j = h - 1; j >= 0; j--) {
       y2[i][j] = a3 * xp1 + a4 * xp2 + b1 * yp1 + b2 * yp2;
       xp2 = xp1;
-      xp1 = input_image[i][j];
+      xp1 = imgIn[i][j];
       yp2 = yp1;
       yp1 = y2[i][j];
     }
@@ -109,27 +115,28 @@ static void deriche_horizontal(int w, int h, double alpha,
   // Intermediate image
   for (i = 0; i < w; i++) {
     for (j = 0; j < h; j++) {
-      output_image[i][j] = c1 * (y1[i][j] + y2[i][j]);
+      imgOut[i][j] = c1 * (y1[i][j] + y2[i][j]);
     }
   }
 
   return;
 }
-
-static void deriche_vertical(int w, int h, double alpha,
-                             double input_image[][w], double output_image[][w],
-                             double y1[][w], double y2[][w]) {
+static void deriche_vertical(int w, int h, DATA_TYPE alpha,
+                             DATA_TYPE POLYBENCH_2D(imgIn, W, H, w, h),
+                             DATA_TYPE POLYBENCH_2D(imgOut, W, H, w, h),
+                             DATA_TYPE POLYBENCH_2D(y1, W, H, w, h),
+                             DATA_TYPE POLYBENCH_2D(y2, W, H, w, h)) {
 
   // Declare variables
   int i, j;
-  double tm1, ym1, ym2;
-  /* double xp1, xp2; */
-  double tp1, tp2;
-  double yp1, yp2;
+  DATA_TYPE tm1, ym1, ym2;
+  /* DATA_TYPE xp1, xp2; */
+  DATA_TYPE tp1, tp2;
+  DATA_TYPE yp1, yp2;
 
-  double k;
-  double a5, a6, a7, a8;
-  double b1, b2, c2;
+  DATA_TYPE k;
+  DATA_TYPE a5, a6, a7, a8;
+  DATA_TYPE b1, b2, c2;
 
   /* #pragma scop */
   // Initialize variables
@@ -150,8 +157,8 @@ static void deriche_vertical(int w, int h, double alpha,
     ym1 = 0.0;
     ym2 = 0.0;
     for (i = 0; i < w; i++) {
-      y1[i][j] = a5 * input_image[i][j] + a6 * tm1 + b1 * ym1 + b2 * ym2;
-      tm1 = input_image[i][j];
+      y1[i][j] = a5 * imgIn[i][j] + a6 * tm1 + b1 * ym1 + b2 * ym2;
+      tm1 = imgIn[i][j];
       ym2 = ym1;
       ym1 = y1[i][j];
     }
@@ -165,7 +172,7 @@ static void deriche_vertical(int w, int h, double alpha,
     for (i = w - 1; i >= 0; i--) {
       y2[i][j] = a7 * tp1 + a8 * tp2 + b1 * yp1 + b2 * yp2;
       tp2 = tp1;
-      tp1 = input_image[i][j];
+      tp1 = imgIn[i][j];
       yp2 = yp1;
       yp1 = y2[i][j];
     }
@@ -173,55 +180,69 @@ static void deriche_vertical(int w, int h, double alpha,
 
   for (i = 0; i < w; i++) {
     for (j = 0; j < h; j++) {
-      output_image[i][j] = c2 * (y1[i][j] + y2[i][j]);
+      imgOut[i][j] = c2 * (y1[i][j] + y2[i][j]);
     }
   }
 }
 
 int main(int argc, char **argv) {
+
+  /* Initialize MPI and related variables */
+  MPI_Init(&argc, &argv);
+  int size;
+  int rank;
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  DEBUG_PRINT("MPI initialized with size %d - rank %d\n", size, rank);
+
   /* Retrieve problem size. */
-  int width = W;
-  int height = H;
+  int width = 4;
+  int height = 4;
 
   // NOTE: We assume W >= H so we can reuse the y1 and y2 arrays
   assert(W >= H);
 
   DEBUG_PRINT("Started with w=%d h=%d\n", width, height);
 
-  /* Initialize MPI and related variables */
-  int size;
-  int rank;
-  MPI_Init(&argc, &argv);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  DEBUG_PRINT("MPI initialized with size %d - rank %d\n", size, rank);
-
   // Determine how many rows each process will receive
   // Each process receives up to n + 1 rows, where n = h // size
   // NOTE: Try to cache align rows
   int rows_per_processor = height / size;
   int mod_rows = height % size;
-  int elems_per_processor = (rows_per_processor + 1) * width;
+  int elems_per_processor;
+  if (mod_rows != 0) {
+    elems_per_processor = (rows_per_processor + 1) * width;
+  } else {
+    elems_per_processor = (rows_per_processor)*width;
+  }
+  if (rank == ROOT_RANK)
+    DEBUG_PRINT("Elements pre processor=%d\n", elems_per_processor);
 
   /* Variable declaration/allocation. */
-  DEBUG_PRINT("Allocating arrays\n");
-  double alpha;
-  double(*input_image)[width] = malloc(sizeof(double[height][width]));
-  double(*output_image)[width] = malloc(sizeof(double[height][width]));
+  DATA_TYPE alpha;
+  POLYBENCH_2D_ARRAY_DECL(imgIn, DATA_TYPE, W, H, width, height);
+  POLYBENCH_2D_ARRAY_DECL(imgOut, DATA_TYPE, W, H, width, height);
+
+  /* if (rank == ROOT_RANK) { */
+  /*   DEBUG_PRINT("Rank %d Allocating arrays\n", rank); */
+  /*   imgIn = malloc(sizeof(DATA_TYPE[height][width])); */
+  /*   imgOut = malloc(sizeof(DATA_TYPE[height][width])); */
+  /* } */
 
   // local partition of arrays
-
-  double(*input_image_local)[width] =
-      malloc(sizeof(double[rows_per_processor + 1][width]));
-  double(*output_image_local)[width] =
-      malloc(sizeof(double[rows_per_processor + 1][width]));
-  double(*y1)[width] = malloc(sizeof(double[rows_per_processor + 1][width]));
-  double(*y2)[width] = malloc(sizeof(double[rows_per_processor + 1][width]));
+  POLYBENCH_2D_ARRAY_DECL(imgInLocal, DATA_TYPE, W, H, width, height);
+  POLYBENCH_2D_ARRAY_DECL(imgOutLocal, DATA_TYPE, W, H, width, height);
+  POLYBENCH_2D_ARRAY_DECL(y1, DATA_TYPE, W, H, width, height);
+  POLYBENCH_2D_ARRAY_DECL(y2, DATA_TYPE, W, H, width, height);
 
   /* Initialize input image */
-  DEBUG_PRINT("Initializing input image\n");
-  init_array(width, height, &alpha, input_image);
-  DEBUG_PRINT("Done\n");
+  if (rank == ROOT_RANK) {
+    DEBUG_PRINT("Rank %d Initializing input image\n", rank);
+    init_array(width, height, &alpha, POLYBENCH_ARRAY(imgIn),
+               POLYBENCH_ARRAY(imgOut));
+    print_array(width, height, POLYBENCH_ARRAY(imgIn));
+    DEBUG_PRINT("Rank %d Done\n", rank);
+  }
 
   /* TODO: Start timer. */
   /* polybench_start_instruments; */
@@ -229,12 +250,12 @@ int main(int argc, char **argv) {
   /* Run kernel. */
 
   // Number of elements to send to each processor
-  int sendcounts[size];
+  int *sendcounts = malloc(sizeof(int) * size);
   // Displacement relative to sendbuf from which to send data to each processor
-  int displs[size];
+  int *displs = malloc(sizeof(int) * size);
   // Initialize displs and sendcounts
   int offset = 0;
-  if (rank == 0)
+  if (rank == ROOT_RANK)
     DEBUG_PRINT("i  displs[i]   sendcounts[i]\n");
   for (int i = 0; i < size; i++) {
     int n_rows = rows_per_processor;
@@ -246,30 +267,32 @@ int main(int argc, char **argv) {
     sendcounts[i] = elements;
     displs[i] = offset;
     offset += elements;
-    if (rank == 0)
+    if (rank == ROOT_RANK)
       DEBUG_PRINT("%i   %i    %i\n", i, displs[i], sendcounts[i]);
   }
 
   // Scatter input image across ranks
-  DEBUG_PRINT("Rank %d MPI_Scatterv\n", rank);
-  MPI_Scatterv(input_image, sendcounts, displs, MPI_DOUBLE, input_image_local,
+  MPI_Scatterv(imgIn, sendcounts, displs, MPI_DOUBLE, imgInLocal,
                elems_per_processor, MPI_DOUBLE, ROOT_RANK, MPI_COMM_WORLD);
+  DEBUG_PRINT("Rank %d MPI_Scatterv\n", rank);
 
   // Determine how many rows we received
   // NOTE: Is there a point to determining this more accurately?
-  int n_rows = rows_per_processor + 1;
+  int n_rows = sendcounts[rank] / width;
+  DEBUG_PRINT("Rank %d got %d elements:\n", rank, sendcounts[rank]);
+  print_array(width, n_rows, POLYBENCH_ARRAY(imgInLocal));
 
   // Run horizontal pass
+  deriche_horizontal(width, n_rows, alpha, POLYBENCH_ARRAY(imgInLocal),
+                     POLYBENCH_ARRAY(imgOutLocal), POLYBENCH_ARRAY(y1),
+                     POLYBENCH_ARRAY(y2));
   DEBUG_PRINT("Rank %d Horizontal pass\n", rank);
-  deriche_horizontal(width, n_rows, alpha, input_image_local,
-                     output_image_local, y1, y2);
-
-  // Gather outputs (output_image_local) from ranks to assemble the intermediate
-  // output image (stored in input_image)
+  // Gather outputs (imgOutLocal) from ranks to assemble the intermediate
+  // output image (stored in imgIn)
+  // recvcounts = sendcounts, displs stays the same, store in imgIn
+  MPI_Gatherv(imgOutLocal, sendcounts[rank], MPI_DOUBLE, imgIn, sendcounts,
+              displs, MPI_DOUBLE, ROOT_RANK, MPI_COMM_WORLD);
   DEBUG_PRINT("Rank %d MPI_Gatherv\n", rank);
-  // recvcounts = sendcounts, displs stays the same, store in input_image
-  MPI_Gatherv(output_image_local, elems_per_processor, MPI_DOUBLE, input_image,
-              sendcounts, displs, MPI_DOUBLE, ROOT_RANK, MPI_COMM_WORLD);
 
   /* NOTE: We could transpose the matrix for better locality during the
    * pass computation. However, we will also need to transpose it again to
@@ -297,43 +320,48 @@ int main(int argc, char **argv) {
   }
 
   // Scatter matrix column-wise across ranks
-  DEBUG_PRINT("Rank %d MPI_Scatterv\n", rank);
-  MPI_Scatterv(input_image, sendcounts, displs, MPI_DOUBLE, input_image_local,
+  MPI_Scatterv(imgIn, sendcounts, displs, MPI_DOUBLE, imgInLocal,
                elems_per_processor, MPI_DOUBLE, ROOT_RANK, MPI_COMM_WORLD);
 
+  DEBUG_PRINT("Rank %d MPI_Scatterv\n", rank);
   // Determine how many rows we received
   // NOTE: Is there a point to determining this more accurately?
-  int n_cols = cols_per_processor + 1;
+  int n_cols = sendcounts[rank] / height;
 
   // Run vertical pass
+  deriche_vertical(n_cols, height, alpha, POLYBENCH_ARRAY(imgInLocal),
+                   POLYBENCH_ARRAY(imgOutLocal), POLYBENCH_ARRAY(y1),
+                   POLYBENCH_ARRAY(y2));
   DEBUG_PRINT("Rank %d Vertical pass\n", rank);
-  deriche_vertical(n_cols, height, alpha, input_image_local, output_image_local,
-                   y1, y2);
-
   // Gather outputs from ranks
-  DEBUG_PRINT("Rank %d MPI_Gatherv\n", rank);
-  // recvcounts = sendcounts, displs stays the same, store in output_image
-  MPI_Gatherv(output_image_local, elems_per_processor, MPI_DOUBLE, output_image,
-              sendcounts, displs, MPI_DOUBLE, ROOT_RANK, MPI_COMM_WORLD);
+  // recvcounts = sendcounts, displs stays the same, store in imgOut
+  MPI_Gatherv(imgOutLocal, elems_per_processor, MPI_DOUBLE, imgOut, sendcounts,
+              displs, MPI_DOUBLE, ROOT_RANK, MPI_COMM_WORLD);
 
+  DEBUG_PRINT("Rank %d MPI_Gatherv\n", rank);
   // Free local arrays
-  free(input_image_local);
-  free(output_image_local);
-  free(input_image);
-  free(y1);
-  free(y2);
+  POLYBENCH_FREE_ARRAY(imgInLocal);
+  POLYBENCH_FREE_ARRAY(imgOutLocal);
+  POLYBENCH_FREE_ARRAY(y1);
+  POLYBENCH_FREE_ARRAY(y2);
+  free(sendcounts);
+  free(displs);
   /* Stop and print timer. */
   /* polybench_stop_instruments; */
   /* polybench_print_instruments; */
 
   /* Print the output image to 1) check correctness and 2) prevent
    * dead-code elimination*/
-  if (rank == 0) {
-    print_array(width, height, (double **)output_image);
+  if (rank == ROOT_RANK) {
+    DEBUG_PRINT("Rank %d Printing output\n", rank);
+    print_array(width, height, POLYBENCH_ARRAY(imgOut));
   }
 
-  /* Free output array */
-  free(output_image);
+  /* Free input/output array */
+  if (rank == ROOT_RANK) {
+    POLYBENCH_FREE_ARRAY(imgIn);
+    POLYBENCH_FREE_ARRAY(imgOut);
+  }
 
   DEBUG_PRINT("MPI_Finalize\n");
   MPI_Finalize();
