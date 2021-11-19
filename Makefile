@@ -1,6 +1,7 @@
 SIZE=LARGE
 CFLAGS=-Wall -Wextra -Wno-comment -O3 -I polybench/utilities
-EXTRA_FLAGS=-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME -D${SIZE}_DATASET
+DUMP=
+EXTRA_FLAGS=-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME -D${SIZE}_DATASET ${DUMP}
 
 SRC_DIR=./src
 BIN_DIR=./bin
@@ -27,10 +28,10 @@ all: deriche deriche_omp seidel-2d_omp heat-3d_omp
 .PHONY: clean run
 
 deriche: ${OBJS}
-	${MPI_CC} ${CFLAGS} ${OBJS} ${SRC_DIR}/deriche/deriche_mpi.c -DMINI_DATASET -o ${BINARY_DERICHE}
+	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} ${OBJS} -o ${BINARY_DERICHE} ${SRC_DIR}/deriche/deriche_mpi.c
 
 deriche_omp: ${OBJS}
-	${CC} ${CFLAGS} ${EXTRA_FLAGS} ${OBJS} -fopenmp -o ${BINARY_DERICHE_OMP}  ${SRC_DIR}/deriche/deriche_omp.c
+	${CC} ${CFLAGS} ${EXTRA_FLAGS} ${OBJS} -fopenmp -o ${BINARY_DERICHE_OMP} ${SRC_DIR}/deriche/deriche_omp.c
 
 run: deriche
 	mpiexec -np 2 ./${BINARY_DERICHE}

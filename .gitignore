@@ -45,6 +45,12 @@ bin/
 .vscode
 .idea
 
+# macOS
+**/.DS_Store
+
 # clangd
 compile_commands.json
 .cache
+
+# benchmark stuff
+src/benchmark/diff_output
