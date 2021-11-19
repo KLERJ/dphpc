@@ -30,7 +30,7 @@ deriche: ${OBJS}
 	${MPI_CC} ${CFLAGS} ${OBJS} ${SRC_DIR}/deriche/deriche_mpi.c -DMINI_DATASET -o ${BINARY_DERICHE}
 
 deriche_omp: ${OBJS}
-	${CC} ${CFLAGS} ${OBJS} -fopenmp -o ${BINARY_DERICHE_OMP}  ${SRC_DIR}/deriche/deriche_omp.c
+	${CC} ${CFLAGS} ${EXTRA_FLAGS} ${OBJS} -fopenmp -o ${BINARY_DERICHE_OMP}  ${SRC_DIR}/deriche/deriche_omp.c
 
 run: deriche
 	mpiexec -np 2 ./${BINARY_DERICHE}

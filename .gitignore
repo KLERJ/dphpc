@@ -36,13 +36,15 @@
 tags
 
 # binaries
-# deriche
 bin/
-polybench.o
+
+# polybench dumped arrays
+*.out
 
 # IDEs
 .vscode
 .idea
 
-# Compilation database
+# clangd
 compile_commands.json
+.cache
