@@ -8,15 +8,17 @@ ROOT_DIR = '../../'
 
 class Benchmark:
     def __init__(self, program, n_runs, dataset_size, test, show_diff) -> None:
-        self.program = BIN_DIR + program
         if 'deriche' in program:
             self.type = 'deriche'
         elif 'seidel-2d' in program:
             self.type = 'seidel-2d'
         elif 'heat-3d' in program:
             self.type = 'heat-3d'
-
-        self.n_runs = int(n_runs)
+        self.program = BIN_DIR + program
+        try:
+            self.n_runs = int(n_runs)
+        except TypeError:
+            self.n_runs = 1
         self.dataset_size = dataset_size
         self.test = test
         self.show_diff = show_diff
@@ -61,7 +63,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('executable')
     parser.add_argument('-s', '--dataset-size', required=True)
-    parser.add_argument('-n', '--n-runs', required=True)
+    parser.add_argument('-n', '--n-runs', required=False)
     parser.add_argument('-d', '--show-diff', required=False, action='store_true')
     parser.add_argument('-t', '--test', required=False, action='store_true')
    
