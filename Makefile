@@ -9,6 +9,7 @@ BINARY_DERICHE_OMP=${BIN_DIR}/deriche_omp
 BINARY_SEIDEL2D_OMP=${BIN_DIR}/seidel-2d_omp
 BINARY_HEAT3D_OMP=${BIN_DIR}/heat-3d_omp
 
+$(shell mkdir -p bin)
 UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
 CC=gcc
