@@ -7,7 +7,7 @@ BIN_DIR = '../../bin/'
 ROOT_DIR = '../../'
 
 class Benchmark:
-    def __init__(self, program, n_runs, dataset_size, test, show_diff) -> None:
+    def __init__(self, program, n_runs, dataset_size, test, show_diff, n_procs) -> None:
         if 'deriche' in program:
             self.type = 'deriche'
         elif 'seidel-2d' in program:
@@ -22,6 +22,7 @@ class Benchmark:
         self.dataset_size = dataset_size
         self.test = test
         self.show_diff = show_diff
+        self.n_procs = n_procs
 
     def make(self):
         p = subprocess.run(['make', f'SIZE={self.dataset_size}', 'DUMP=' + '-DPOLYBENCH_DUMP_ARRAYS' if self.test else ''],
@@ -63,18 +64,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('executable')
     parser.add_argument('-s', '--dataset-size', required=True)
-    parser.add_argument('-n', '--n-runs', required=False)
+    parser.add_argument('-n', '--runs', required=False)
+    parser.add_argument('-np', '--procs', required=False, action='append')
     parser.add_argument('-d', '--show-diff', required=False, action='store_true')
     parser.add_argument('-t', '--test', required=False, action='store_true')
    
     args = parser.parse_args()
     program = args.executable
-    n_runs = args.n_runs
+    n_runs = args.runs
     dataset_size = args.dataset_size
     test = args.test
     show_diff = args.show_diff
+    n_procs = args.procs
 
-    bench = Benchmark(program, n_runs, dataset_size, test, show_diff)
+    bench = Benchmark(program, n_runs, dataset_size, test, show_diff, n_procs)
     if test:
         bench.check_implementation()
     else:

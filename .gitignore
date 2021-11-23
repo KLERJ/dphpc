@@ -37,6 +37,7 @@ tags
 
 # binaries
 bin/
+polybench/*_ref
 
 # polybench dumped arrays
 *.out
