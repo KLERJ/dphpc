@@ -81,6 +81,7 @@ void kernel_heat_3d(int tsteps,
                 }
             }
         }
+        #pragma omp parallel for
         for (int i = 1; i < _PB_N-1; i++) {
            for (int j = 1; j < _PB_N-1; j++) {
                for (int k = 1; k < _PB_N-1; k++) {
