@@ -25,19 +25,19 @@
 #define MPI_DATATYPE MPI_DOUBLE
 #define IDX(ARRAY, X, Y ,Z, NY, NZ) ((ARRAY) + ((X) * (NY) * (NZ)) + ((Y) * (NZ)) + (Z))
 
+
+
 /* Array initialization. */
 static
 void init_array (int n,
-		 DATA_TYPE POLYBENCH_3D(A,N,N,N,n,n,n),
-		 DATA_TYPE POLYBENCH_3D(B,N,N,N,n,n,n))
+		 DATA_TYPE *A)
 {
   int i, j, k;
-  int c = 0;
 
   for (i = 0; i < n; i++)
     for (j = 0; j < n; j++)
       for (k = 0; k < n; k++)
-        A[i][j][k] = B[i][j][k] = (DATA_TYPE) (i + j + (n-k))* 10 / (n);
+        *IDX(A, i, j, k, n, n) = (DATA_TYPE) (i + j*j + (n-k))* 10 / (n);
 }
 
 static
@@ -49,8 +49,10 @@ void my_init_array (int nx, int ny, int nz,
 
   for (i = 0; i < nx; i++)
     for (j = 0; j < ny; j++)
-      for (k = 0; k < nz; k++)
-        *IDX(A, i,j, k, ny, nz) = (DATA_TYPE) c++;
+      for (k = 0; k < nz; k++){
+        // c = rand()%100;
+        *IDX(A, i, j, k, ny, nz) =  (DATA_TYPE) (i + j*j + (nz-k))* 10 / (nz);
+      }
 }
 
 
@@ -58,27 +60,21 @@ void my_init_array (int nx, int ny, int nz,
    Can be used also to check the correctness of the output. */
 static
 void print_array(int n,
-		 DATA_TYPE POLYBENCH_3D(A,N,N,N,n,n,n))
+		 DATA_TYPE *A)
 
 {
   int i, j, k;
 
-  // POLYBENCH_DUMP_START;
-  // POLYBENCH_DUMP_BEGIN("A");
-  
-  
-  for (i = 0; i < n; i++) {
-    for (j = 0; j < n; j++) {
+  POLYBENCH_DUMP_START;
+  POLYBENCH_DUMP_BEGIN("A");
+  for (i = 0; i < n; i++)
+    for (j = 0; j < n; j++)
       for (k = 0; k < n; k++) {
-        //  if ((i * n * n + j * n + k) % 20 == 0) fprintf(POLYBENCH_DUMP_TARGET, "\n");
-         printf(DATA_PRINTF_MODIFIER, A[i][j][k]);
+         if ((i * n * n + j * n + k) % 20 == 0) fprintf(POLYBENCH_DUMP_TARGET, "\n");
+         fprintf(POLYBENCH_DUMP_TARGET, "%0.2lf ", *IDX(A, i, j, k, n , n));
       }
-      printf("\n");
-    }
-      printf("\n\n");
-  }
-  // POLYBENCH_DUMP_END("A");
-  // POLYBENCH_DUMP_FINISH;
+  POLYBENCH_DUMP_END("A");
+  POLYBENCH_DUMP_FINISH;
 }
 
 static
@@ -96,11 +92,11 @@ void my_print_array(int nx, int ny, int nz,
     for (k = 0; k < nz; k++) {
       for (j = 0; j < ny; j++) {
         //  if ((i * n * n + j * n + k) % 20 == 0) fprintf(POLYBENCH_DUMP_TARGET, "\n");
-         printf(DATA_PRINTF_MODIFIER, *IDX(A, i, j, k, ny, nz));
+         fprintf(stderr, DATA_PRINTF_MODIFIER, *IDX(A, i, j, k, ny, nz));
       }
-      printf("\n");
+      fprintf(stderr, "\n");
     }
-      printf("\n\n");
+      fprintf(stderr, "\n\n");
   }
   // POLYBENCH_DUMP_END("A");
   // POLYBENCH_DUMP_FINISH;
@@ -133,7 +129,6 @@ void compute_step_kernel_heat_3d(int nx,
   }
 }
 
-#define N 4
 
 int main(int argc, char** argv)
 {
@@ -142,6 +137,9 @@ int main(int argc, char** argv)
   int ny = N;
   int nz = N;
   int tsteps = TSTEPS;
+
+  (void)&print_array;
+  (void)&init_array;
 
   double *full_cube = NULL, *A, *B;
  
@@ -159,10 +157,10 @@ int main(int argc, char** argv)
   int pz = pdims[2];
 
   if(rank == 0){
-    printf("Num: %d\n", nx);
+    fprintf(stdout, "Num: %d Procs: %d, Steps:%d\n", nx, p, tsteps);
   }
 
-  //printf("rank: %d, px: %d, py: %d, pz: %d\n", rank, px, py, pz);
+  printf("rank: %d, px: %d, py: %d, pz: %d\n", rank, px, py, pz);
 
   int periods[3] = {0, 0, 0};
   MPI_Comm topocomm;
@@ -183,6 +181,7 @@ int main(int argc, char** argv)
   sizes[0] = nx / px;
   sizes[1] = ny / py;
   sizes[2] = nz / pz;
+
   
   int sx = sizes[0];
   int sy = sizes[1];
@@ -197,17 +196,15 @@ int main(int argc, char** argv)
 
   printf("rank: %d, sx: %d, sy: %d, sz: %d\n", rank, sx, sy, sz);
   
-  
+  // TopBottom Z
+  // LeftRight Y
+  // FrontBack X
   int top, bottom, left, right, front, back;
 
   MPI_Cart_shift(topocomm, 0, 1, &front, &back);
   MPI_Cart_shift(topocomm, 1, 1, &left, &right);
   MPI_Cart_shift(topocomm, 2, 1, &top, &bottom);
 
-  
-  
-  
-  
   
   // Local cubes include face of neighbor
   A = (double*)calloc(ssx* ssy * ssz, sizeof(double));
@@ -226,38 +223,10 @@ int main(int argc, char** argv)
   int starts[3] = {0,0,0};
   MPI_Type_create_subarray(3, orig_sizes, sizes, starts, MPI_ORDER_C, MPI_DATATYPE, &subCubeSend_tmp);
   MPI_Type_create_resized(subCubeSend_tmp, 0,  sizeof(double),  &subCubeSend);
-  
-  // MPI_Datatype yslice, cubeSend_tmp;
-  // MPI_Type_vector(sy, sz, nz, MPI_DATATYPE, &yslice);
-  // MPI_Type_vector(sx, 1, nz*ny, yslice, &subCubeSend);
-  // MPI_Type_create_resized(cubeSend_tmp, 1, 1 * sizeof(double), &subCubeSend);
-  
-  
 
-
-
-
-
-
-
-  // int sub_arr_sizes[3] = {ssx, ssy, ssz};
-  // int sub_arr_starts[3] = {1,1,1};
   MPI_Datatype y_s_slice;
   MPI_Type_vector(sy, sz, ssz, MPI_DATATYPE, &y_s_slice);
   MPI_Type_create_hvector(sx, 1, (ssy * ssz) * sizeof(MPI_DATATYPE), y_s_slice, &subCubeRcv);
-
-
-
-
-
-
-
-
-
-
-
-  // MPI_Type_create_subarray(3, sub_arr_sizes, sizes, sub_arr_starts, MPI_ORDER_C, MPI_DATATYPE, &subCubeRcv);
-  // MPI_Type_create_subarray()
 
   // A[x][y][0] strided with sx*sy elements, each of length 1. Offset sz  
   MPI_Type_vector(sy, 1, ssz, MPI_DATATYPE, &yRow);
@@ -273,38 +242,24 @@ int main(int argc, char** argv)
   
   MPI_Type_commit(&subCubeSend);
   MPI_Type_commit(&subCubeRcv);
-  
+
   MPI_Type_commit(&xyFace);
   MPI_Type_commit(&xzFace);
   MPI_Type_commit(&yzFace);
 
-  MPI_Barrier(MPI_COMM_WORLD);
   if(rank == 0){
     
     /* Variable declaration/allocation. */
-    // POLYBENCH_3D_ARRAY_DECL(A, DATA_TYPE, N, N, N, n, n, n);
-    // POLYBENCH_3D_ARRAY_DECL(B, DATA_TYPE, N, N, N, n, n, n);
     full_cube = (double*)calloc(nx * ny * nz, sizeof(double));
-    // full_B = (double*)calloc(nx * ny * nz, sizeof(double));
-    my_init_array(nx, ny, nz, full_cube);
-    // my_print_array(nx, ny, nz, full_cube);
-
-    //Test
-    // my_init_array(ssx, ssy, ssz, A);
-
-    // MPI_Send(IDX(A, 0, 1, 1, ssy, ssz), 1, yzFace, 1, 0, MPI_COMM_WORLD);
-    // MPI_Send(IDX(A, 1, 0, 1, ssy, ssz), 1, xzFace, 1, 0, MPI_COMM_WORLD);
-    // MPI_Send(IDX(A, 1, 1, ssz-1, ssy, ssz), 1, xyFace, 1, 0, MPI_COMM_WORLD);
-  } else if(rank == 1){
-    MPI_Status status;
-    // MPI_Recv(IDX(A, 0, 1, 1, ssy, ssz), 1, yzFace, 0, 0, MPI_COMM_WORLD, &status);
-    // MPI_Recv(IDX(A, 1, ssy-2, 1, ssy, ssz), 1, xzFace, 0, 0, MPI_COMM_WORLD, &status);
-    // MPI_Recv(IDX(A, 1, 1, 0 , ssy, ssz), 1, xyFace, 0, 0, MPI_COMM_WORLD, &status);
-
-
-  }
+    
     /* Initialize array(s). */
-    // init_array (n, POLYBENCH_ARRAY(full_A), POLYBENCH_ARRAY(full_B));
+    // init_array(nx, full_cube);
+    my_init_array(nx, ny, nz, full_cube);
+
+    /* Start timer. */
+    polybench_start_instruments;
+  } 
+
   int *sendcounts = malloc(sizeof(int)*p);
   int *displs = malloc(sizeof(int)*p);
   int tmp_coords[3];
@@ -317,38 +272,32 @@ int main(int argc, char** argv)
   
 
   MPI_Scatterv(full_cube, sendcounts, displs, subCubeSend, IDX(A, 1, 1, 1, ssy, ssz), 1, subCubeRcv, 0, MPI_COMM_WORLD );
-  // MPI_Scatter(full_cube, 1, subCubeRcv, A, 1, subCubeRcv, 0, MPI_COMM_WORLD );
-  // MPI_Barier();
-
-  free(sendcounts);
-  free(displs);
 
 
-/*
-  for (int t = 1; t <= tsteps; t++) {
+  for (int t = 1; t <= tsteps*2; t++) {
 
 
     const int num_requsts = 2 * 6;
     MPI_Request requests[num_requsts];
-    MPI_Isend(IDX(A, 1    , 1, 1, ssy, ssz), 1, yzFace, front, 0, MPI_COMM_WORLD, requests + 0);
-    MPI_Isend(IDX(A, ssx-2, 1, 1, ssy, ssz), 1, yzFace, back , 0, MPI_COMM_WORLD, requests + 1);
+    MPI_Isend(IDX(A, 1    , 1, 1, ssy, ssz), 1, yzFace, front,  0, MPI_COMM_WORLD, requests + 0);
+    MPI_Isend(IDX(A, ssx-2, 1, 1, ssy, ssz), 1, yzFace, back ,  0, MPI_COMM_WORLD, requests + 1);
     
-    MPI_Isend(IDX(A, 1, 1, 1    , ssy, ssz), 1, xyFace, top   , 0, MPI_COMM_WORLD, requests + 2);
+    MPI_Isend(IDX(A, 1, 1, 1    , ssy, ssz), 1, xyFace, top,    0, MPI_COMM_WORLD, requests + 2);
     MPI_Isend(IDX(A, 1, 1, ssz-2, ssy, ssz), 1, xyFace, bottom, 0, MPI_COMM_WORLD, requests + 3);
     
-    MPI_Isend(IDX(A, 1, 1    , 1, ssy, ssz), 1, xzFace, left,  0, MPI_COMM_WORLD, requests + 4);
-    MPI_Isend(IDX(A, 1, ssy-2, 1, ssy, ssz), 1, xzFace, right, 0, MPI_COMM_WORLD, requests + 5);
+    MPI_Isend(IDX(A, 1, 1    , 1, ssy, ssz), 1, xzFace, left,   0, MPI_COMM_WORLD, requests + 4);
+    MPI_Isend(IDX(A, 1, ssy-2, 1, ssy, ssz), 1, xzFace, right,  0, MPI_COMM_WORLD, requests + 5);
 
 
 
-    MPI_Irecv(IDX(A, 0    , 1, 1, ssy, ssz), 1, yzFace, front, 0, MPI_COMM_WORLD, requests + 6);
-    MPI_Irecv(IDX(A, ssx-1, 1, 1, ssy, ssz), 1, yzFace, back , 0, MPI_COMM_WORLD, requests + 7);
+    MPI_Irecv(IDX(A, 0    , 1, 1, ssy, ssz), 1, yzFace, front,  0, MPI_COMM_WORLD, requests + 6);
+    MPI_Irecv(IDX(A, ssx-1, 1, 1, ssy, ssz), 1, yzFace, back,   0, MPI_COMM_WORLD, requests + 7);
     
-    MPI_Irecv(IDX(A, 1, 1, 0    , ssy, ssz), 1, xyFace, top   , 0, MPI_COMM_WORLD, requests + 8);
+    MPI_Irecv(IDX(A, 1, 1, 0    , ssy, ssz), 1, xyFace, top,    0, MPI_COMM_WORLD, requests + 8);
     MPI_Irecv(IDX(A, 1, 1, ssz-1, ssy, ssz), 1, xyFace, bottom, 0, MPI_COMM_WORLD, requests + 9);
     
-    MPI_Irecv(IDX(A, 1, 0, 1    , ssy, ssz), 1, xzFace, left , 0, MPI_COMM_WORLD, requests + 10);
-    MPI_Irecv(IDX(A, 1, ssy-1, 1, ssy, ssz), 1, xzFace, right, 0, MPI_COMM_WORLD, requests + 11);
+    MPI_Irecv(IDX(A, 1, 0, 1    , ssy, ssz), 1, xzFace, left,   0, MPI_COMM_WORLD, requests + 10);
+    MPI_Irecv(IDX(A, 1, ssy-1, 1, ssy, ssz), 1, xzFace, right,  0, MPI_COMM_WORLD, requests + 11);
 
     MPI_Waitall(num_requsts, requests, MPI_STATUS_IGNORE);
 
@@ -361,118 +310,54 @@ int main(int argc, char** argv)
     B = tmp;
 
 
+  }
+
+
+ /*
+  for(int i = 0; i< p; i++){
+ 
+    MPI_Barrier(MPI_COMM_WORLD);
+    if (rank == i){
+      fprintf(stderr, "\n\n==============\nScattered %d:\n==============\n", i);
+      my_print_array(ssx, ssy, ssz, A);
+      fprintf(stderr, "==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, left, rank, right, bottom);
+      fprintf(stderr, "==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, front, rank, back, bottom);
+    }
   }*/
 
 
 
-const int num_requsts = 2 * 6;
-    MPI_Request requests[num_requsts];
-    MPI_Isend(IDX(A, 1    , 1, 1, ssy, ssz), 1, yzFace, front, 0, MPI_COMM_WORLD, requests + 0);
-    MPI_Isend(IDX(A, ssx-2, 1, 1, ssy, ssz), 1, yzFace, back , 0, MPI_COMM_WORLD, requests + 1);
-    
-    MPI_Isend(IDX(A, 1, 1, 1    , ssy, ssz), 1, xyFace, top   , 0, MPI_COMM_WORLD, requests + 2);
-    MPI_Isend(IDX(A, 1, 1, ssz-2, ssy, ssz), 1, xyFace, bottom, 0, MPI_COMM_WORLD, requests + 3);
-    
-    MPI_Isend(IDX(A, 1, 1    , 1, ssy, ssz), 1, xzFace, left,  0, MPI_COMM_WORLD, requests + 4);
-    MPI_Isend(IDX(A, 1, ssy-2, 1, ssy, ssz), 1, xzFace, right, 0, MPI_COMM_WORLD, requests + 5);
 
 
+  for(int i = 0; i < p; i++){
+    sendcounts[i] = 1;
 
-    MPI_Irecv(IDX(A, 0    , 1, 1, ssy, ssz), 1, yzFace, front, 0, MPI_COMM_WORLD, requests + 6);
-    MPI_Irecv(IDX(A, ssx-1, 1, 1, ssy, ssz), 1, yzFace, back , 0, MPI_COMM_WORLD, requests + 7);
-    
-    MPI_Irecv(IDX(A, 1, 1, 0    , ssy, ssz), 1, xyFace, top   , 0, MPI_COMM_WORLD, requests + 8);
-    MPI_Irecv(IDX(A, 1, 1, ssz-1, ssy, ssz), 1, xyFace, bottom, 0, MPI_COMM_WORLD, requests + 9);
-    
-    MPI_Irecv(IDX(A, 1, 0, 1    , ssy, ssz), 1, xzFace, left , 0, MPI_COMM_WORLD, requests + 10);
-    MPI_Irecv(IDX(A, 1, ssy-1, 1, ssy, ssz), 1, xzFace, right, 0, MPI_COMM_WORLD, requests + 11);
-
-    MPI_Waitall(num_requsts, requests, MPI_STATUS_IGNORE);
-
-
-
- 
-  
- 
-  if (rank == 0){
-    printf("Scattered 0:\n");
-    my_print_array(ssx, ssy, ssz, A);
-    printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, left, rank, right, bottom);
-  printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, front, rank, back, bottom);
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (rank == 1){
-    printf("Scattered 1:\n");
-    my_print_array(ssx, ssy, ssz, A);
-    printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, left, rank, right, bottom);
-  printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, front, rank, back, bottom);
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (rank == 2){
-    printf("Scattered 2:\n");
-    my_print_array(ssx, ssy, ssz, A);
-    printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, left, rank, right, bottom);
-  printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, front, rank, back, bottom);
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (rank == 3){
-    printf("Scattered 3:\n");
-    my_print_array(ssx, ssy, ssz, A);
-    printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, left, rank, right, bottom);
-  printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, front, rank, back, bottom);
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (rank == 4){
-    printf("Scattered 4:\n");
-    my_print_array(ssx, ssy, ssz, A);
-    printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, left, rank, right, bottom);
-  printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, front, rank, back, bottom);
+    MPI_Cart_coords(topocomm, i, 3, tmp_coords);
+    displs[i] = ((tmp_coords[0]*sx) * (ny) * (nz)) + ((tmp_coords[1]*sy) * (nz)) + (tmp_coords[2]*sz);
   }
 
-  /*
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (rank == 5){
-    printf("Scattered 5:\n");
-    my_print_array(ssx, ssy, ssz, A);
-    printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, left, rank, right, bottom);
-  printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, front, rank, back, bottom);
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (rank == 6){
-    printf("Scattered 6:\n");
-    my_print_array(ssx, ssy, ssz, A);
-    printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, left, rank, right, bottom);
-  printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, front, rank, back, bottom);
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (rank == 7){
-    printf("Scattered 7:\n");
-    my_print_array(ssx, ssy, ssz, A);
-    printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, left, rank, right, bottom);
-  printf("==============\n     %4d\n%4d %4d %4d\n     %4d\n==============\n", top, front, rank, back, bottom);
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
-*/
-  
+
+  MPI_Gatherv(IDX(A, 1, 1, 1, ssy, ssz), 1, subCubeRcv, full_cube, sendcounts, displs, subCubeSend, 0, MPI_COMM_WORLD);
 
 
-
-  /* Start timer. */
-  polybench_start_instruments;
-
-
-  polybench_stop_instruments;
 
 
   /* Be clean. */
   if(rank == 0){
+    polybench_stop_instruments;
     polybench_print_instruments;
 
   /* Prevent dead-code elimination. All live-out data must be printed
      by the function call in argument. */
-    // polybench_prevent_dce(print_array(n, POLYBENCH_ARRAY(full_A)));
+    polybench_prevent_dce(print_array(nx, full_cube));
+
     free(full_cube);
   }
+
+  free(sendcounts);
+  free(displs);
+
+  
   free(A);
   free(B);
   MPI_Type_free(&subCubeSend);
@@ -483,6 +368,7 @@ const int num_requsts = 2 * 6;
   MPI_Type_free(&yzFace);
 
   MPI_Finalize();
+
 
 
   return 0;
