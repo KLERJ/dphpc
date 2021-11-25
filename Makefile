@@ -28,11 +28,15 @@ all: deriche deriche_omp seidel-2d_omp heat-3d_omp heat-3d_mpi
 
 .PHONY: clean run
 
+DERICHE_DIM=1000
 deriche: ${OBJS}
 	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} ${OBJS} -o ${BINARY_DERICHE} ${SRC_DIR}/deriche/deriche_mpi.c
 
 deriche_omp: ${OBJS}
-	${CC} ${CFLAGS} ${EXTRA_FLAGS} ${OBJS} -fopenmp -o ${BINARY_DERICHE_OMP} ${SRC_DIR}/deriche/deriche_omp.c
+	${CC} ${CFLAGS} ${EXTRA_FLAGS} ${OBJS} -fopenmp -o ${BINARY_DERICHE_OMP} ${SRC_DIR}/deriche/deriche_omp.c -DW=${DERICHE_DIM} -DH=${DERICHE_DIM}
+
+deriche_ref: ${OBJS}
+	${CC} ${CFLAGS} ${EXTRA_FLAGS} ${OBJS} -o ${BIN_DIR}/deriche_ref polybench/medley/deriche/deriche.c -DW=${DERICHE_DIM} -DH=${DERICHE_DIM}
 
 run: deriche
 	mpiexec -np 2 ./${BINARY_DERICHE}
