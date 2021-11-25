@@ -12,14 +12,20 @@ JOB_NAME=$3
 # DATASETS=('MINI' 'SMALL' 'MEDIUM' 'LARGE' 'EXTRALARGE')
 DERICHE_DIMS=(100 1000 10000 20000 40000)
 
+SCRIPTS_DIR=$(dirname "$0")
+PROJECT_DIR="$SCRIPTS_DIR/.."
+
 set -x
+cd $PROJECT_DIR
+pwd
+
 mkdir -p $JOB_NAME
 # for size in "${DATASETS[@]}"; do
 for dim in ${DERICHE_DIMS[@]}; do
   make clean
   make $TARGET DERICHE_DIM=$dim BINARY_DERICHE_OMP=./bin/$JOB_NAME
   for rep in $(seq 1 $N_REPS); do
-    bin/$TARGET > $JOB_NAME/$TARGET.$dim.$rep
+    bin/$JOB_NAME > $JOB_NAME/$TARGET.$dim.$rep
   done
 done
 
