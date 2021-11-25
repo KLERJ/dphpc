@@ -1,42 +1,27 @@
 #!/usr/bin/env bash
 set -e
 
-if [ "$#" -ne 2 ]; then
-  echo "Usage: ./benchmark_deriche.sh <n-reps> <result-dir>"
+if [ "$#" -ne 3 ]; then
+  echo "Usage: ./benchmark_deriche.sh <n-reps> <target> <job-name>"
   exit 1
 fi
 N_REPS=$1
-RESULT_DIR=$2
+TARGET=$2
+JOB_NAME=$3
 
 # DATASETS=('MINI' 'SMALL' 'MEDIUM' 'LARGE' 'EXTRALARGE')
 DERICHE_DIMS=(100 1000 10000 20000 40000)
 
-#######################################
-# Perform benchmark on the target.
-# Globals:
-#   DERICHE_DIMS
-#   N_REPS
-#   RESULT_DIR
-# Arguments:
-#   The target to benchmark
-# Outputs:
-#   Writes result in $target.$size.$rep
-#######################################
-benchmark() {
-  target=$1
-  # for size in "${DATASETS[@]}"; do
-  for dim in ${DERICHE_DIMS[@]}; do
-    make clean
-    make $target DERICHE_DIM=$dim
-    for rep in $(seq 1 $N_REPS); do
-      bin/$target > $RESULT_DIR/$target.$dim.$rep
-    done
-  done
-}
-
-
 set -x
-mkdir -p $RESULT_DIR
+mkdir -p $JOB_NAME
+# for size in "${DATASETS[@]}"; do
+for dim in ${DERICHE_DIMS[@]}; do
+  make clean
+  make $TARGET DERICHE_DIM=$dim BINARY_DERICHE_OMP=./bin/$JOB_NAME
+  for rep in $(seq 1 $N_REPS); do
+    bin/$TARGET > $JOB_NAME/$TARGET.$dim.$rep
+  done
+done
 
-# benchmark deriche_ref
-benchmark deriche_omp
+
+
