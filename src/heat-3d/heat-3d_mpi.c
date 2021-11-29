@@ -25,7 +25,10 @@
 #define MPI_DATATYPE MPI_DOUBLE
 #define IDX(ARRAY, X, Y ,Z, NY, NZ) ((ARRAY) + ((X) * (NY) * (NZ)) + ((Y) * (NZ)) + (Z))
 
-
+#define UPDATE_STEP(A, I, J, K, NY, NZ)  (SCALAR_VAL(0.125) * (*IDX(A, (I)+1, J, K, NY, NZ) - SCALAR_VAL(2.0) * *IDX(A, I, J, K, NY, NZ) + *IDX(A, (I)-1, J, K, NY, NZ)) \
+                                        + SCALAR_VAL(0.125) * (*IDX(A, I, (J)+1, K, NY, NZ) - SCALAR_VAL(2.0) * *IDX(A, I, J, K, NY, NZ) + *IDX(A, I, (J)-1, K, NY, NZ)) \
+                                        + SCALAR_VAL(0.125) * (*IDX(A, I, J, (K)+1, NY, NZ) - SCALAR_VAL(2.0) * *IDX(A, I, J, K, NY, NZ) + *IDX(A, I, J, (K)-1, NY, NZ)) \
+                                        + *IDX(A, I, J, K, NY, NZ))
 
 /* Array initialization. */
 static
@@ -106,7 +109,7 @@ void my_print_array(int nx, int ny, int nz,
 /* Main computational kernel. The whole function will be timed,
    including the call and return. */
 static
-void compute_step_kernel_heat_3d(int nx,
+void compute_inner_step_kernel_heat_3d(int nx,
           int ny,
           int nz,
 		      DATA_TYPE *A,
@@ -117,26 +120,54 @@ void compute_step_kernel_heat_3d(int nx,
   // j loops over Y 
   // k loops over Z (contiguous)
 
-  for (int i = 1; i < nx-1; i++) {
-      for (int j = 1; j < ny-1; j++) {
-          for (int k = 1; k < nz-1; k++) {    
-              *IDX(B, i, j, k, ny, nz) =  SCALAR_VAL(0.125) * (*IDX(A, i+1, j, k, ny, nz) - SCALAR_VAL(2.0) * *IDX(A, i, j, k, ny, nz) + *IDX(A, i-1, j, k, ny, nz))
-                                        + SCALAR_VAL(0.125) * (*IDX(A, i, j+1, k, ny, nz) - SCALAR_VAL(2.0) * *IDX(A, i, j, k, ny, nz) + *IDX(A, i, j-1, k, ny, nz))
-                                        + SCALAR_VAL(0.125) * (*IDX(A, i, j, k+1, ny, nz) - SCALAR_VAL(2.0) * *IDX(A, i, j, k, ny, nz) + *IDX(A, i, j, k-1, ny, nz))
-                                        + *IDX(A, i, j, k, ny, nz);
+  for (int i = 2; i < nx-2; i++) {
+      for (int j = 2; j < ny-2; j++) {
+          for (int k = 2; k < nz-2; k++) {    
+              *IDX(B, i, j, k, ny, nz) =  UPDATE_STEP(A, i, j, k, ny, nz);
           }
       }
   }
 }
 
 
+static 
+void compute_border_step_kernel_heat_3d(int nx,
+            int ny,
+            int nz,
+            DATA_TYPE *A,
+            DATA_TYPE *B)
+{
+  for (int i = 1; i < nx-1; i++) {
+    *IDX(B, i, 1, 1, ny, nz) =  UPDATE_STEP(A, i, 1, 1, ny, nz);
+    *IDX(B, i, ny-2, nz-2, ny, nz) =  UPDATE_STEP(A, i, ny-2, nz-2, ny, nz);
+  }
+  for (int j = 2; j < ny-2; j++) {
+    *IDX(B, 1, j, 1, ny, nz) =  UPDATE_STEP(A, 1, j, 1, ny, nz);
+    *IDX(B, nx-2, j, nz-2, ny, nz) =  UPDATE_STEP(A, nx-2, j, nz-2, ny, nz);
+  }
+  
+  for (int k = 2; k < nz-1; k++) {  
+    *IDX(B, 1, 1, k, ny, nz) =  UPDATE_STEP(A, 1, 1, k, ny, nz);
+    *IDX(B, nx-2, ny-2, k, ny, nz) =  UPDATE_STEP(A, nx-2, ny-2, k, ny, nz);  
+  }
+  
+}
+
 int main(int argc, char** argv)
 {
   /* Retrieve problem size. */
+
   int nx = N;
   int ny = N;
   int nz = N;
   int tsteps = TSTEPS;
+
+  if(argc == 3){
+    sscanf(argv[1], "%d", &nx);
+    sscanf(argv[2], "%d", &tsteps);
+    ny = nz = nx;
+  } 
+
 
   (void)&print_array;
   (void)&init_array;
@@ -157,7 +188,7 @@ int main(int argc, char** argv)
   int pz = pdims[2];
 
   if(rank == 0){
-    fprintf(stdout, "Num: %d Procs: %d, Steps:%d\n", nx, p, tsteps);
+    fprintf(stdout, "Processors: %d N: %d, Steps:%d\n", p, nx, tsteps);
   }
 
   printf("rank: %d, px: %d, py: %d, pz: %d\n", rank, px, py, pz);
@@ -210,7 +241,7 @@ int main(int argc, char** argv)
   A = (double*)calloc(ssx* ssy * ssz, sizeof(double));
   B = (double*)calloc(ssx* ssy * ssz, sizeof(double));
 
-  int orig_sizes[3] = {N, N, N};
+  int orig_sizes[3] = {nx, ny, nz};
   MPI_Datatype subCubeSend, subCubeSend_tmp;
   MPI_Datatype subCubeRcv;
 
@@ -299,10 +330,12 @@ int main(int argc, char** argv)
     MPI_Irecv(IDX(A, 1, 0, 1    , ssy, ssz), 1, xzFace, left,   0, MPI_COMM_WORLD, requests + 10);
     MPI_Irecv(IDX(A, 1, ssy-1, 1, ssy, ssz), 1, xzFace, right,  0, MPI_COMM_WORLD, requests + 11);
 
+    compute_inner_step_kernel_heat_3d(ssx, ssy, ssz, A, B);
+    
     MPI_Waitall(num_requsts, requests, MPI_STATUS_IGNORE);
 
+    compute_border_step_kernel_heat_3d(ssx, ssy, ssz, A, B);
 
-    compute_step_kernel_heat_3d(ssx, ssy, ssz, A, B);
   
   
     double *tmp = A;
