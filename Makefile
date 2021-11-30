@@ -8,6 +8,7 @@ BIN_DIR=./bin
 TEST_DIR=./test
 BINARY_DERICHE=${BIN_DIR}/deriche
 BINARY_DERICHE_OMP=${BIN_DIR}/deriche_omp
+BINARY_DERICHE_MPI_BASELINE=${BIN_DIR}/deriche_mpi_baseline
 BINARY_SEIDEL2D_OMP=${BIN_DIR}/seidel-2d_omp
 BINARY_HEAT3D_OMP=${BIN_DIR}/heat-3d_omp
 BINARY_HEAT3D_MPI=${BIN_DIR}/heat-3d_mpi
@@ -35,6 +36,9 @@ deriche: ${OBJS}
 
 deriche_omp: ${OBJS}
 	${CC} ${CFLAGS} ${EXTRA_FLAGS} ${OBJS} -fopenmp -o ${BINARY_DERICHE_OMP} ${SRC_DIR}/deriche/deriche_omp.c
+
+deriche_mpi_baseline:
+	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BINARY_DERICHE_MPI_BASELINE} ${SRC_DIR}/deriche/deriche_mpi_baseline.c polybench/utilities/polybench.c
 
 run: deriche
 	mpiexec -np 2 ./${BINARY_DERICHE} > ${OUTPUT_DERICHE} 2>&1
