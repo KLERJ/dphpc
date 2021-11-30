@@ -237,6 +237,10 @@ int main(int argc, char **argv) {
   free(imgOutPriv);
   free(y1);
   free(y2);
+  MPI_Type_free(&block_t);
+  MPI_Type_free(&_block_t);
+  MPI_Type_free(&bh_cols_t);
+  MPI_Type_free(&_bh_cols_t);
 
   MPI_Finalize();
   return 0;
