@@ -33,6 +33,7 @@ static void init_array(int w, int h, DATA_TYPE *alpha,
   for (i = 0; i < w; i++)
     for (j = 0; j < h; j++)
       imgIn[i][j] = (DATA_TYPE)((313 * i + 991 * j) % 65536) / 65535.0f;
+
 }
 
 static void my_init_array(int w, int h, DATA_TYPE *alpha, double* globalimgIn) {
@@ -43,6 +44,7 @@ static void my_init_array(int w, int h, DATA_TYPE *alpha, double* globalimgIn) {
   for (i = 0; i < w; i++)
     for (j = 0; j < h; j++)
       globalimgIn[i*h + j] = (DATA_TYPE)((313 * i + 991 * j) % 65536) / 65535.0f;
+
 }
 
 /* DCE code. Must scan the entire live-out data.
@@ -101,46 +103,41 @@ static void kernel_deriche(int argc, char** argv, int w, int h, DATA_TYPE alpha)
   DATA_TYPE tp1, tp2;
   DATA_TYPE yp1, yp2;
 
+  // Arrays containing all input and output data.
+  // Only for use by process 0.
   double* globalimgIn = NULL;
-  double* localimgIn = globalimgIn;
-  //double* localimgIn = (double*)malloc(h * w / nprocs * sizeof(double));
-  double* y1 = (double*)malloc(h * w / nprocs * sizeof(double));
-  double* y2 = (double*)malloc(h * w / nprocs * sizeof(double));
-  double* globalimgOut = (double*)malloc(h * w / nprocs * sizeof(double));
+  double* globalimgOut = NULL;
 
   // Processor 0 initializes the global input image.
   if (rank == 0) {
     globalimgIn = (double*)malloc(w * h * sizeof(double));
     my_init_array(w, h, &alpha, globalimgIn);
-    localimgIn = globalimgIn;
     polybench_start_instruments;
   }
 
+  double* localimgIn = (double*)malloc(h * w / nprocs * sizeof(double));
+  double* y1 = (double*)malloc(h * w / nprocs * sizeof(double));
+  double* y2 = (double*)malloc(h * w / nprocs * sizeof(double));
+  double* localimgOuta = (double*)malloc(h * w / nprocs * sizeof(double));
+  double* localimgOutb = (double*)malloc(h * w / nprocs * sizeof(double));
 
   // Processor 0 distributes rows of input image to workers.
-  //MPI_Scatter(globalimgIn, h * w / nprocs, MPI_INTEGER, localimgIn, h * w / nprocs, MPI_INTEGER,
-  //        0, MPI_COMM_WORLD);
+  MPI_Scatter(globalimgIn, h * w / nprocs, MPI_DOUBLE, localimgIn, h * w / nprocs, MPI_DOUBLE,
+          0, MPI_COMM_WORLD);
 
-  for (i = 0; i < _PB_W; i++) {
+  for (i = 0; i < _PB_W/nprocs; i++) {
     ym1 = SCALAR_VAL(0.0);
     ym2 = SCALAR_VAL(0.0);
     xm1 = SCALAR_VAL(0.0);
     for (j = 0; j < _PB_H; j++) {
       y1[i*_PB_H + j] = a1 *  localimgIn[i*_PB_H + j] + a2 * xm1 + b1 * ym1 + b2 * ym2;
-      if (i == 0){
-      printf("a1: %lf\n", a1);
-      printf("a2: %lf\n", a2);
-      printf("b1: %lf\n", b1);
-      printf("ym1: %lf\n", ym1);
-      printf("ym2: %lf\n", ym2);
-      printf("xm1: %lf\n", xm1);}
       xm1 = localimgIn[i*_PB_H + j];
       ym2 = ym1;
       ym1 = y1[i*_PB_H + j];
     }
   }
 
-  for (i = 0; i < _PB_W; i++) {
+  for (i = 0; i < _PB_W/nprocs; i++) {
     yp1 = SCALAR_VAL(0.0);
     yp2 = SCALAR_VAL(0.0);
     xp1 = SCALAR_VAL(0.0);
@@ -154,66 +151,86 @@ static void kernel_deriche(int argc, char** argv, int w, int h, DATA_TYPE alpha)
     }
   }
 
-  for (i = 0; i < _PB_W; i++)
+  for (i = 0; i < _PB_W/nprocs; i++)
     for (j = 0; j < _PB_H; j++) {
-      globalimgOut[i*h + j] = c1 * (y1[i*h + j] + y2[i*h + j]);
+      localimgOuta[i*h + j] = c1 * (y1[i*h + j] + y2[i*h + j]);
     }
 
-  for (j = 0; j < _PB_H; j++) {
+  int idx = 0;
+  for(int k = 0; k < nprocs; k++) {
+      for (int i = 0; i < w/nprocs; i++) {
+          for (int j = 0; j < h/nprocs; j++) {
+              localimgOutb[idx] = localimgOuta[i*h + k*h/nprocs + j];
+              idx++;
+          }
+      }
+  }
+
+  // Now need to exchange the localimgOut's between processors. 
+  MPI_Alltoall(localimgOutb, h*w/nprocs/nprocs, MPI_DOUBLE, 
+          localimgOuta, h*w/nprocs/nprocs, MPI_DOUBLE, MPI_COMM_WORLD);
+
+  for (j = 0; j < _PB_H/nprocs; j++) {
     tm1 = SCALAR_VAL(0.0);
     ym1 = SCALAR_VAL(0.0);
     ym2 = SCALAR_VAL(0.0);
     for (i = 0; i < _PB_W; i++) {
-      y1[i*h + j] = a5 * globalimgOut[i*h + j] + a6 * tm1 + b1 * ym1 + b2 * ym2;
-      tm1 = globalimgOut[i*h + j];
+      y1[i*h/nprocs + j] = a5 * localimgOuta[i*h/nprocs + j] + a6 * tm1 + b1 * ym1 + b2 * ym2;
+      tm1 = localimgOuta[i*h/nprocs + j];
       ym2 = ym1;
-      ym1 = y1[i*h + j];
+      ym1 = y1[i*h/nprocs + j];
     }
   }
 
-  for (j = 0; j < _PB_H; j++) {
+  for (j = 0; j < _PB_H/nprocs; j++) {
     tp1 = SCALAR_VAL(0.0);
     tp2 = SCALAR_VAL(0.0);
     yp1 = SCALAR_VAL(0.0);
     yp2 = SCALAR_VAL(0.0);
     for (i = _PB_W - 1; i >= 0; i--) {
-      y2[i*h + j] = a7 * tp1 + a8 * tp2 + b1 * yp1 + b2 * yp2;
+      y2[i*h/nprocs + j] = a7 * tp1 + a8 * tp2 + b1 * yp1 + b2 * yp2;
       tp2 = tp1;
-      tp1 = globalimgOut[i*h + j];
+      tp1 = localimgOuta[i*h/nprocs + j];
       yp2 = yp1;
-      yp1 = y2[i*h + j];
+      yp1 = y2[i*h/nprocs + j];
     }
   }
 
-  for (i = 0; i < _PB_W; i++)
-    for (j = 0; j < _PB_H; j++)
-      globalimgOut[i*h + j] = c2 * (y1[i*h + j] + y2[i*h + j]);
+  for (i = 0; i < _PB_W; i++) {
+    for (j = 0; j < _PB_H/nprocs; j++) {
+      localimgOuta[i*h/nprocs + j] = c2 * (y1[i*h/nprocs + j] + y2[i*h/nprocs + j]);
+    }
+  }
 
-  printf("Made it to 1\n");
-  // NOTE: Don't forget to free all arrays that have been declared!
   if (rank == 0)
+      globalimgOut = (double*)malloc(h * w * sizeof(double));
+
+  MPI_Gather(localimgOuta, h*w/nprocs, MPI_DOUBLE, globalimgIn, h*w/nprocs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+  if (rank == 0) {
+      // Transposing
+      idx = 0;
+      for (int i = 0; i < w; i++) {
+          for (int k = 0; k < nprocs; k++) {
+              for (int j = 0; j < h/nprocs; j++) {
+                  globalimgOut[idx] = globalimgIn[i*h/nprocs + k*w*h/nprocs + j];
+                  idx++;
+              }
+          }
+      }
+      polybench_stop_instruments;
+      polybench_print_instruments;
+      polybench_prevent_dce(print_array(w, h, globalimgOut));
       free(globalimgIn);
-  //free(localimgIn);
+      free(globalimgOut);
+  }
+  free(localimgIn);
+  free(localimgOuta);
+  free(localimgOutb);
   free(y1);
   free(y2);
-  printf("here1\n");
 
-  /* Stop and print timer. */
-  polybench_stop_instruments;
-  polybench_print_instruments;
-  printf("here1\n");
-
-  /* Prevent dead-code elimination. All live-out data must be printed
-     by the function call in argument. */
-  polybench_prevent_dce(print_array(w, h, globalimgOut));
-  printf("here1\n");
-
-  /* Be clean. */
-  free(globalimgOut);
-
-  printf("here1\n");
   MPI_Finalize();
-  printf("here1\n");
 
 #pragma endscop
 }
@@ -225,14 +242,6 @@ int main(int argc, char **argv) {
 
   /* Variable declaration/allocation. */
   DATA_TYPE alpha;
-  // NOTE: below no longer needed with parallel implementation.
-  // POLYBENCH_2D_ARRAY_DECL(imgIn, DATA_TYPE, W, H, w, h);
-  // POLYBENCH_2D_ARRAY_DECL(imgOut, DATA_TYPE, W, H, w, h);
-  // POLYBENCH_2D_ARRAY_DECL(y1, DATA_TYPE, W, H, w, h);
-  // POLYBENCH_2D_ARRAY_DECL(y2, DATA_TYPE, W, H, w, h);
-
-  /* Initialize array(s). */
-  // init_array(w, h, &alpha, POLYBENCH_ARRAY(imgIn), POLYBENCH_ARRAY(imgOut));
 
   /* Run kernel. */
   kernel_deriche(argc, argv, w, h, alpha);
