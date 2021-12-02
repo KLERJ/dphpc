@@ -36,7 +36,7 @@ static void init_array(int w, int h, DATA_TYPE *imgIn) {
   // input should be between 0 and 1 (grayscale image pixel)
   for (i = 0; i < w; i++)
     for (j = 0; j < h; j++)
-      imgIn[IND(i, j, w)] = (DATA_TYPE)((313 * i + 991 * j) % 65536) / 65535.0f;
+      imgIn[IND(i, j, h)] = (DATA_TYPE)((313 * i + 991 * j) % 65536) / 65535.0f;
   /* for debugging purposes: */
   /* imgIn[IND(i, j, h)] = (DATA_TYPE)(i * w) + j + 1; */
 }
