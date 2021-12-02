@@ -32,7 +32,7 @@ all: deriche deriche_omp seidel-2d_omp heat-3d_omp heat-3d_mpi
 .PHONY: clean run
 
 deriche: ${OBJS}
-	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} ${OBJS} -Wno-unused-parameter -DNDEBUG -o ${BINARY_DERICHE} ${SRC_DIR}/deriche/deriche_mpi.c
+	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} ${OBJS} -Wno-unused-parameter -DNDEBUG -o ${BINARY_DERICHE} ${SRC_DIR}/deriche/deriche_mpi_r.c
 
 deriche_omp: ${OBJS}
 	${CC} ${CFLAGS} ${EXTRA_FLAGS} ${OBJS} -fopenmp -o ${BINARY_DERICHE_OMP} ${SRC_DIR}/deriche/deriche_omp.c
@@ -41,8 +41,9 @@ deriche_mpi_baseline:
 	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BINARY_DERICHE_MPI_BASELINE} ${SRC_DIR}/deriche/deriche_mpi_baseline.c polybench/utilities/polybench.c
 
 run: deriche
+	# mpiexec -np 2 ./${BINARY_DERICHE}
 	mpiexec -np 2 ./${BINARY_DERICHE} > ${OUTPUT_DERICHE} 2>&1
-	diff ${OUTPUT_DERICHE} ${TEST_DIR}/deriche/deriche_${SIZE}_DATASET.out --brief
+	diff ${OUTPUT_DERICHE} ${TEST_DIR}/deriche/deriche_${SIZE}_DATASET.out #--brief
 
 seidel-2d_omp: ${OBJS}
 	${CC} ${CFLAGS} ${OBJS} -fopenmp -o ${BINARY_SEIDEL2D_OMP} ${SRC_DIR}/seidel-2d/seidel-2d_omp.c -I ${SRC_DIR}/seidel-2d ${EXTRA_FLAGS}
