@@ -40,7 +40,7 @@ void init_array (int n,
   for (i = 0; i < n; i++)
     for (j = 0; j < n; j++)
       for (k = 0; k < n; k++)
-        *IDX(A, i, j, k, n, n) = (DATA_TYPE) (i + j*j + (n-k))* 10 / (n);
+        *IDX(A, i, j, k, n, n) = (DATA_TYPE) (i*i + j + (n-k))* 10 / (n);
 }
 
 static
@@ -53,8 +53,8 @@ void my_init_array (int nx, int ny, int nz,
   for (i = 0; i < nx; i++)
     for (j = 0; j < ny; j++)
       for (k = 0; k < nz; k++){
-        // c = rand()%100;
-        *IDX(A, i, j, k, ny, nz) =  (DATA_TYPE) (i + j*j + (nz-k))* 10 / (nz);
+        // *IDX(A, i, j, k, ny, nz) = c++;
+        *IDX(A, i, j, k, ny, nz) =  (DATA_TYPE) (i*i + j + (nz-k))* 10 / (nz);
       }
 }
 
@@ -95,11 +95,11 @@ void my_print_array(int nx, int ny, int nz,
     for (k = 0; k < nz; k++) {
       for (j = 0; j < ny; j++) {
         //  if ((i * n * n + j * n + k) % 20 == 0) fprintf(POLYBENCH_DUMP_TARGET, "\n");
-         fprintf(stderr, DATA_PRINTF_MODIFIER, *IDX(A, i, j, k, ny, nz));
+         fprintf(stderr, "%6.2lf ", *IDX(A, i, j, k, ny, nz));
       }
       fprintf(stderr, "\n");
     }
-      fprintf(stderr, "\n\n");
+      fprintf(stderr, "\n");
   }
   // POLYBENCH_DUMP_END("A");
   // POLYBENCH_DUMP_FINISH;
@@ -129,27 +129,105 @@ void compute_inner_step_kernel_heat_3d(int nx,
   }
 }
 
+static
+void compute_step_kernel_heat_3d(int nx,
+          int ny,
+          int nz,
+		      DATA_TYPE *A,
+		      DATA_TYPE *B)
+{
+  // Row major array
+  // i loops over X
+  // j loops over Y 
+  // k loops over Z (contiguous)
+
+  for (int i = 1; i < nx-1; i++) {
+      for (int j = 1; j < ny-1; j++) {
+          for (int k = 1; k < nz-1; k++) {    
+              *IDX(B, i, j, k, ny, nz) =  UPDATE_STEP(A, i, j, k, ny, nz);
+          }
+      }
+  }
+}
+
+
+
 
 static 
 void compute_border_step_kernel_heat_3d(int nx,
             int ny,
             int nz,
             DATA_TYPE *A,
-            DATA_TYPE *B)
+            DATA_TYPE *B,
+            int neighbors[6])
 {
-  for (int i = 1; i < nx-1; i++) {
-    *IDX(B, i, 1, 1, ny, nz) =  UPDATE_STEP(A, i, 1, 1, ny, nz);
-    *IDX(B, i, ny-2, nz-2, ny, nz) =  UPDATE_STEP(A, i, ny-2, nz-2, ny, nz);
+  int i, j, k, istart = 1, iend = nx-1, jstart = 1 , jend = ny - 1, kstart = 1 , kend = nz - 1;
+  if(neighbors[0] != MPI_PROC_NULL){
+    jstart = 2;
   }
-  for (int j = 2; j < ny-2; j++) {
-    *IDX(B, 1, j, 1, ny, nz) =  UPDATE_STEP(A, 1, j, 1, ny, nz);
-    *IDX(B, nx-2, j, nz-2, ny, nz) =  UPDATE_STEP(A, nx-2, j, nz-2, ny, nz);
+  if(neighbors[1] != MPI_PROC_NULL){
+    jend = ny - 2;
   }
+  if(neighbors[2] != MPI_PROC_NULL){
+    kstart = 2;
+  }
+  if(neighbors[3] != MPI_PROC_NULL){
+    kend = nz - 2;
+  }
+  if(neighbors[4] != MPI_PROC_NULL){
+    istart = 2;
+  }
+  if(neighbors[5] != MPI_PROC_NULL){
+    iend = nx - 2;
+  }
+
+
+  // Left X-Z
+  if(neighbors[0] != MPI_PROC_NULL)
+    for (i = 1; i < nx-1; i++) {
+      for(k = 1; k < nz-1; k++){
+        *IDX(B, i, 1, k, ny, nz) =  UPDATE_STEP(A, i, 1, k, ny, nz);
+      }
+    }
+  // Right X-Z
+  if(neighbors[1] != MPI_PROC_NULL)
+    for (i = 1; i < nx-1; i++) {
+      for(k = 1; k < nz-1; k++){
+        *IDX(B, i, ny-2, k, ny, nz) =  UPDATE_STEP(A, i, ny-2, k, ny, nz);
+      }
+    }
+
+  // Top X-Y
+  if(neighbors[2] != MPI_PROC_NULL)
+    for(i = 1; i < nx-1; i++){
+      for (int j = 1; j < ny-1; j++) {
+        *IDX(B, i, j, 1, ny, nz) =  UPDATE_STEP(A, i, j, 1, ny, nz);
+      }
+    }
   
-  for (int k = 2; k < nz-1; k++) {  
-    *IDX(B, 1, 1, k, ny, nz) =  UPDATE_STEP(A, 1, 1, k, ny, nz);
-    *IDX(B, nx-2, ny-2, k, ny, nz) =  UPDATE_STEP(A, nx-2, ny-2, k, ny, nz);  
-  }
+  // Bottom X-Y
+  if(neighbors[3] != MPI_PROC_NULL)
+    for(i = 1; i < nx-1; i++){
+      for (j = 1; j < ny-1; j++) {
+        *IDX(B, i, j, nz-2, ny, nz) =  UPDATE_STEP(A, i, j, nz-2, ny, nz);
+      }
+    }
+  
+  // Front Y-Z
+  if(neighbors[4] != MPI_PROC_NULL)
+    for (j = 2; j < ny-2; j++) {
+      for (int k = 2; k < nz-1; k++) {  
+        *IDX(B, 1, j, k, ny, nz) =  UPDATE_STEP(A, 1, j, k, ny, nz);
+      }
+    }
+  
+  // Back Y-Z
+  if(neighbors[5] != MPI_PROC_NULL)
+    for (j = 2; j < ny-2; j++) {
+      for (k = 2; k < nz-1; k++) {  
+        *IDX(B, nx-2, j, k, ny, nz) =  UPDATE_STEP(A, nx-2, j, k, ny, nz);  
+      }
+    }
   
 }
 
@@ -217,7 +295,7 @@ int main(int argc, char** argv)
   int sx = sizes[0];
   int sy = sizes[1];
   int sz = sizes[2];
-  printf("rank: %d, rxsx: %d, rysy: %d, rzsz: %d\n", rank, rx*sx, ry*sy, rz*sz);
+  // printf("rank: %d, rxsx: %d, rysy: %d, rzsz: %d\n", rank, rx*sx, ry*sy, rz*sz);
 
   // Sizes of the local volumes including neighbor boundary
   int ssx = sx + 2;
@@ -236,6 +314,7 @@ int main(int argc, char** argv)
   MPI_Cart_shift(topocomm, 1, 1, &left, &right);
   MPI_Cart_shift(topocomm, 2, 1, &top, &bottom);
 
+  int neighbors[6] = {left, right, top, bottom, front, back};
   
   // Local cubes include face of neighbor
   A = (double*)calloc(ssx* ssy * ssz, sizeof(double));
@@ -303,11 +382,16 @@ int main(int argc, char** argv)
   
 
   MPI_Scatterv(full_cube, sendcounts, displs, subCubeSend, IDX(A, 1, 1, 1, ssy, ssz), 1, subCubeRcv, 0, MPI_COMM_WORLD );
+  memcpy(B, A, sizeof(double) * ssx * ssy * ssz);
 
 
   for (int t = 1; t <= tsteps*2; t++) {
 
+    // fprintf(stderr, "\nIteration %d\n", t);
+    // fprintf(stderr, "A\n");
 
+
+    // my_print_array(ssy, ssy, ssy, A);
     const int num_requsts = 2 * 6;
     MPI_Request requests[num_requsts];
     MPI_Isend(IDX(A, 1    , 1, 1, ssy, ssz), 1, yzFace, front,  0, MPI_COMM_WORLD, requests + 0);
@@ -331,11 +415,18 @@ int main(int argc, char** argv)
     MPI_Irecv(IDX(A, 1, ssy-1, 1, ssy, ssz), 1, xzFace, right,  0, MPI_COMM_WORLD, requests + 11);
 
     compute_inner_step_kernel_heat_3d(ssx, ssy, ssz, A, B);
+
+    // fprintf(stderr, "B1\n");
+    // my_print_array(ssy, ssy, ssy, B);
+
     
     MPI_Waitall(num_requsts, requests, MPI_STATUS_IGNORE);
 
-    compute_border_step_kernel_heat_3d(ssx, ssy, ssz, A, B);
+    //compute_step_kernel_heat_3d(ssx, ssy, ssz, A, B);
+    compute_border_step_kernel_heat_3d(ssx, ssy, ssz, A, B, neighbors);
 
+    // fprintf(stderr, "B2\n");
+    // my_print_array(ssy, ssy, ssy, B);
   
   
     double *tmp = A;
@@ -378,11 +469,15 @@ int main(int argc, char** argv)
   /* Be clean. */
   if(rank == 0){
     polybench_stop_instruments;
-    polybench_print_instruments;
+    //polybench_print_instruments;
 
   /* Prevent dead-code elimination. All live-out data must be printed
      by the function call in argument. */
-    polybench_prevent_dce(print_array(nx, full_cube));
+    //polybench_prevent_dce(print_array(nx, full_cube));
+    fprintf(stderr, "Final A\n");
+    my_print_array(ssx, ssy, ssz, A);
+    my_print_array(nx, ny, nz, full_cube);
+    
 
     free(full_cube);
   }
