@@ -1,15 +1,18 @@
-SIZE=SMALL
+SIZE=MINI
 CFLAGS=-Wall -Wextra -Wno-comment -O3 -I polybench/utilities polybench/utilities/polybench.c
 DUMP=
 EXTRA_FLAGS=-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME -D${SIZE}_DATASET ${DUMP}
 
 SRC_DIR=./src
 BIN_DIR=./bin
+TEST_DIR=./test
 BINARY_DERICHE=${BIN_DIR}/deriche
 BINARY_DERICHE_OMP=${BIN_DIR}/deriche_omp
+BINARY_DERICHE_MPI_BASELINE=${BIN_DIR}/deriche_mpi_baseline
 BINARY_SEIDEL2D_OMP=${BIN_DIR}/seidel-2d_omp
 BINARY_HEAT3D_OMP=${BIN_DIR}/heat-3d_omp
 BINARY_HEAT3D_MPI=${BIN_DIR}/heat-3d_mpi
+OUTPUT_DERICHE=deriche_${SIZE}_out.txt
 
 $(shell mkdir -p bin)
 UNAME := $(shell uname)
@@ -26,18 +29,22 @@ all: deriche deriche_omp seidel-2d_omp heat-3d_omp heat-3d_mpi
 
 .PHONY: clean run
 
-DERICHE_DIM=1000
-deriche:
-	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS}  -o ${BINARY_DERICHE} ${SRC_DIR}/deriche/deriche_mpi.c
-
 deriche_omp:
 	${CC} ${CFLAGS} ${EXTRA_FLAGS}  -fopenmp -o ${BINARY_DERICHE_OMP} ${SRC_DIR}/deriche/deriche_omp.c -DW=${DERICHE_DIM} -DH=${DERICHE_DIM}
+
+deriche:
+	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -Wno-unused-parameter -DNDEBUG -o ${BINARY_DERICHE} ${SRC_DIR}/deriche/deriche_mpi_r.c
 
 deriche_ref:
 	${CC} ${CFLAGS} ${EXTRA_FLAGS}  -o ${BIN_DIR}/deriche_ref polybench/medley/deriche/deriche.c -DW=${DERICHE_DIM} -DH=${DERICHE_DIM}
 
+deriche_mpi_baseline:
+	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BINARY_DERICHE_MPI_BASELINE} ${SRC_DIR}/deriche/deriche_mpi_baseline.c polybench/utilities/polybench.c
+
 run: deriche
-	mpiexec -np 2 ./${BINARY_DERICHE}
+	# mpiexec -np 2 ./${BINARY_DERICHE}
+	mpiexec -np 2 ./${BINARY_DERICHE} > ${OUTPUT_DERICHE} 2>&1
+	diff ${OUTPUT_DERICHE} ${TEST_DIR}/deriche/deriche_${SIZE}_DATASET.out #--brief
 
 seidel-2d_omp:
 	${CC} ${CFLAGS}  -fopenmp -o ${BINARY_SEIDEL2D_OMP} ${SRC_DIR}/seidel-2d/seidel-2d_omp.c -I ${SRC_DIR}/seidel-2d ${EXTRA_FLAGS}

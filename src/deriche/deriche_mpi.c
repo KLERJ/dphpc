@@ -11,8 +11,10 @@
 #ifndef NDEBUG
 #define DEBUG_PRINT(format, args...)                                           \
   printf("%s:%d %s() " format, __FILE__, __LINE__, __func__, ##args);
-#elif
+#define DEBUG_PRINT_ARRAY(w, h, array) print_array(w, h, array);
+#else
 #define DEBUG_PRINT(format, args...)
+#define DEBUG_PRINT_ARRAY(w, h, array)
 #endif
 
 #define ROOT_RANK 0
@@ -196,8 +198,8 @@ int main(int argc, char **argv) {
   DEBUG_PRINT("MPI initialized with size %d - rank %d\n", size, rank);
 
   /* Retrieve problem size. */
-  int width = 4;
-  int height = 4;
+  int width = W;
+  int height = H;
 
   // NOTE: We assume W >= H so we can reuse the y1 and y2 arrays
   assert(W >= H);
@@ -209,25 +211,11 @@ int main(int argc, char **argv) {
   // NOTE: Try to cache align rows
   int rows_per_processor = height / size;
   int mod_rows = height % size;
-  int elems_per_processor;
-  if (mod_rows != 0) {
-    elems_per_processor = (rows_per_processor + 1) * width;
-  } else {
-    elems_per_processor = (rows_per_processor)*width;
-  }
-  if (rank == ROOT_RANK)
-    DEBUG_PRINT("Elements pre processor=%d\n", elems_per_processor);
 
   /* Variable declaration/allocation. */
   DATA_TYPE alpha;
   POLYBENCH_2D_ARRAY_DECL(imgIn, DATA_TYPE, W, H, width, height);
   POLYBENCH_2D_ARRAY_DECL(imgOut, DATA_TYPE, W, H, width, height);
-
-  /* if (rank == ROOT_RANK) { */
-  /*   DEBUG_PRINT("Rank %d Allocating arrays\n", rank); */
-  /*   imgIn = malloc(sizeof(DATA_TYPE[height][width])); */
-  /*   imgOut = malloc(sizeof(DATA_TYPE[height][width])); */
-  /* } */
 
   // local partition of arrays
   POLYBENCH_2D_ARRAY_DECL(imgInLocal, DATA_TYPE, W, H, width, height);
@@ -240,7 +228,7 @@ int main(int argc, char **argv) {
     DEBUG_PRINT("Rank %d Initializing input image\n", rank);
     init_array(width, height, &alpha, POLYBENCH_ARRAY(imgIn),
                POLYBENCH_ARRAY(imgOut));
-    print_array(width, height, POLYBENCH_ARRAY(imgIn));
+    DEBUG_PRINT_ARRAY(width, height, POLYBENCH_ARRAY(imgIn));
     DEBUG_PRINT("Rank %d Done\n", rank);
   }
 
@@ -249,14 +237,17 @@ int main(int argc, char **argv) {
 
   /* Run kernel. */
 
+  /**** Partition matrix row-wise across ranks ****/
+
   // Number of elements to send to each processor
   int *sendcounts = malloc(sizeof(int) * size);
   // Displacement relative to sendbuf from which to send data to each processor
   int *displs = malloc(sizeof(int) * size);
   // Initialize displs and sendcounts
   int offset = 0;
-  if (rank == ROOT_RANK)
+  if (rank == ROOT_RANK) {
     DEBUG_PRINT("i  displs[i]   sendcounts[i]\n");
+  }
   for (int i = 0; i < size; i++) {
     int n_rows = rows_per_processor;
     if (mod_rows > 0) {
@@ -267,29 +258,35 @@ int main(int argc, char **argv) {
     sendcounts[i] = elements;
     displs[i] = offset;
     offset += elements;
-    if (rank == ROOT_RANK)
+    if (rank == ROOT_RANK) {
       DEBUG_PRINT("%i   %i    %i\n", i, displs[i], sendcounts[i]);
+    }
   }
 
   // Scatter input image across ranks
   MPI_Scatterv(imgIn, sendcounts, displs, MPI_DOUBLE, imgInLocal,
-               elems_per_processor, MPI_DOUBLE, ROOT_RANK, MPI_COMM_WORLD);
+               sendcounts[rank], MPI_DOUBLE, ROOT_RANK, MPI_COMM_WORLD);
   DEBUG_PRINT("Rank %d MPI_Scatterv\n", rank);
 
   // Determine how many rows we received
   // NOTE: Is there a point to determining this more accurately?
-  int n_rows = sendcounts[rank] / width;
+  int n_local_rows = sendcounts[rank] / width;
   DEBUG_PRINT("Rank %d got %d elements:\n", rank, sendcounts[rank]);
-  print_array(width, n_rows, POLYBENCH_ARRAY(imgInLocal));
+  DEBUG_PRINT_ARRAY(width, n_local_rows, POLYBENCH_ARRAY(imgInLocal));
 
   // Run horizontal pass
-  deriche_horizontal(width, n_rows, alpha, POLYBENCH_ARRAY(imgInLocal),
+  deriche_horizontal(width, n_local_rows, alpha, POLYBENCH_ARRAY(imgInLocal),
                      POLYBENCH_ARRAY(imgOutLocal), POLYBENCH_ARRAY(y1),
                      POLYBENCH_ARRAY(y2));
   DEBUG_PRINT("Rank %d Horizontal pass\n", rank);
+
   // Gather outputs (imgOutLocal) from ranks to assemble the intermediate
   // output image (stored in imgIn)
   // recvcounts = sendcounts, displs stays the same, store in imgIn
+
+  DEBUG_PRINT("Rank %d computed %d elements:\n", rank, sendcounts[rank]);
+  DEBUG_PRINT_ARRAY(width, n_local_rows, POLYBENCH_ARRAY(imgOutLocal));
+
   MPI_Gatherv(imgOutLocal, sendcounts[rank], MPI_DOUBLE, imgIn, sendcounts,
               displs, MPI_DOUBLE, ROOT_RANK, MPI_COMM_WORLD);
   DEBUG_PRINT("Rank %d MPI_Gatherv\n", rank);
@@ -299,46 +296,75 @@ int main(int argc, char **argv) {
    * recover the correct result
    */
 
+  /**** Partition matrix column-wise across ranks ****/
+
   // Determine how many columns each process will receive
   // Each process receives up to n + 1 columns, where n = w // size
   int cols_per_processor = width / size;
   int mod_cols = width % size;
-  elems_per_processor = (cols_per_processor + 1) * width;
 
   // Recompute send_counts and displs
+  // NOTE: We send data at the granularity of *columns* now, so we need to
+  // change the sendcounds accordingly
   offset = 0;
   for (int i = 0; i < size; i++) {
-    int n_cols = rows_per_processor;
+    int n_cols = cols_per_processor;
     if (mod_cols > 0) {
       n_cols++;
       mod_cols--;
     }
-    int elements = n_cols * height;
+    int elements = n_cols;
     sendcounts[i] = elements;
     displs[i] = offset;
     offset += elements;
   }
 
-  // Scatter matrix column-wise across ranks
-  MPI_Scatterv(imgIn, sendcounts, displs, MPI_DOUBLE, imgInLocal,
-               elems_per_processor, MPI_DOUBLE, ROOT_RANK, MPI_COMM_WORLD);
+  if (rank == ROOT_RANK) {
+    DEBUG_PRINT_ARRAY(width, height, POLYBENCH_ARRAY(imgIn));
+  }
+
+  // This is a bit more involved than scattering row wise
+  // New MPI Datatype to represent a column
+  MPI_Datatype imgCol, imgColType, localCol, localColType;
+  int n_rows = height;
+  // The number of columns depends on the processor and whether we are sending
+  // or receiving
+  int n_local_cols = sendcounts[rank] / height;
+  int n_cols = width;
+
+  // Define the type for the *sending* processor
+  if (rank == ROOT_RANK) {
+    MPI_Type_vector(n_rows, 1, n_cols, MPI_DOUBLE, &imgCol);
+    MPI_Type_commit(&imgCol);
+    // Resize to make this work for columns (distance between elements)
+    MPI_Type_create_resized(imgCol, 0, 1 * sizeof(DATA_TYPE), &imgColType);
+    MPI_Type_commit(&imgColType);
+  }
+
+  // Define the type for the *receiving* processors
+  MPI_Type_vector(n_rows, 1, n_local_cols, MPI_DOUBLE, &localCol);
+  MPI_Type_commit(&localCol);
+  // Resize to make this work for columns (distance between elements)
+  MPI_Type_create_resized(localCol, 0, 1 * sizeof(DATA_TYPE), &localColType);
+  MPI_Type_commit(&localColType);
+
+  MPI_Scatterv(imgIn, sendcounts, displs, imgColType, imgInLocal,
+               sendcounts[rank], localColType, ROOT_RANK, MPI_COMM_WORLD);
 
   DEBUG_PRINT("Rank %d MPI_Scatterv\n", rank);
-  // Determine how many rows we received
-  // NOTE: Is there a point to determining this more accurately?
-  int n_cols = sendcounts[rank] / height;
-
+  DEBUG_PRINT_ARRAY(n_cols, width, POLYBENCH_ARRAY(imgInLocal));
   // Run vertical pass
-  deriche_vertical(n_cols, height, alpha, POLYBENCH_ARRAY(imgInLocal),
+  deriche_vertical(n_local_cols, height, alpha, POLYBENCH_ARRAY(imgInLocal),
                    POLYBENCH_ARRAY(imgOutLocal), POLYBENCH_ARRAY(y1),
                    POLYBENCH_ARRAY(y2));
   DEBUG_PRINT("Rank %d Vertical pass\n", rank);
   // Gather outputs from ranks
   // recvcounts = sendcounts, displs stays the same, store in imgOut
-  MPI_Gatherv(imgOutLocal, elems_per_processor, MPI_DOUBLE, imgOut, sendcounts,
-              displs, MPI_DOUBLE, ROOT_RANK, MPI_COMM_WORLD);
+  MPI_Gatherv(imgOutLocal, sendcounts[rank], localColType, imgOut, sendcounts,
+              displs, imgColType, ROOT_RANK, MPI_COMM_WORLD);
 
   DEBUG_PRINT("Rank %d MPI_Gatherv\n", rank);
+
   // Free local arrays
   POLYBENCH_FREE_ARRAY(imgInLocal);
   POLYBENCH_FREE_ARRAY(imgOutLocal);
@@ -346,6 +372,7 @@ int main(int argc, char **argv) {
   POLYBENCH_FREE_ARRAY(y2);
   free(sendcounts);
   free(displs);
+
   /* Stop and print timer. */
   /* polybench_stop_instruments; */
   /* polybench_print_instruments; */
