@@ -162,6 +162,7 @@ void my_print_array(FILE* ptr, int nx, int ny, int nz,
 
 }
 
+
 #ifdef DEBUG
 
 
@@ -562,12 +563,19 @@ int main(int argc, char** argv)
   int nz = N;
   int sx, sy, sz;
   int tsteps = TSTEPS;
+  char *output_path;
 
-  if(argc == 3){
+  if(argc==2){
+    output_path = argv[1];
+  } else if(argc == 4){
     sscanf(argv[1], "%d", &nx);
     sscanf(argv[2], "%d", &tsteps);
     ny = nz = nx;
-  } 
+    output_path = argv[3];
+  } else {
+    fprintf(stderr, "Usage: %s <N_SIZE> <T_STEPS> OUTPUT_DUMP\n", argv[0]);
+    exit(1);
+  }
 
 
   (void)&print_array;
@@ -598,7 +606,7 @@ int main(int argc, char** argv)
 
 
   if(rank == 0){
-    fprintf(stdout, "Processors: %d N: %d, Steps:%d\n", p, nx, tsteps);
+    printf("Processors: %d N: %d, Steps:%d\n", p, nx, tsteps);
   }
 
   // Set up cubical topology topolo
@@ -636,7 +644,7 @@ int main(int argc, char** argv)
   B = (DATA_TYPE*)calloc(sx* sy * sz, sizeof(DATA_TYPE));
 
   if(A == NULL || B == NULL) {
-    printf("Error allocating A and B\n");
+    fprintf(stderr, "Error allocating A and B\n");
   }
 
   // Pointers to temporary neghbor faces
@@ -662,7 +670,7 @@ int main(int argc, char** argv)
     neighborFaces[2*i + 1] = (DATA_TYPE*)calloc(size, sizeof(DATA_TYPE));
 
     if(neighborFaces[2*i] == NULL || neighborFaces[2*i + 1] == NULL) {
-      printf("Error allocating neighbor arrays.\n");
+      fprintf(stderr, "Error allocating neighbor arrays.\n");
       exit(EXIT_FAILURE);
     }
   }
@@ -734,7 +742,7 @@ int main(int argc, char** argv)
     /* Variable declaration/allocation. */
     full_cube = (DATA_TYPE*)calloc(nx * ny * nz, sizeof(DATA_TYPE));
     if(full_cube == NULL){
-      printf("Falied allocating full cube memory.\n");
+      fprintf(stderr, "Falied allocating full cube memory.\n");
       exit(EXIT_FAILURE);
     }
     
@@ -754,7 +762,7 @@ int main(int argc, char** argv)
   int *sendcounts = calloc(p, sizeof(int));
   int *displs = calloc(p, sizeof(int));
   if(sendcounts == NULL || displs == NULL){
-    printf("Falied allocating sendcounts and displacement arrays\n");
+    fprintf(stderr, "Falied allocating sendcounts and displacement arrays\n");
     exit(EXIT_FAILURE);
   }
   int tmp_coords[3];
@@ -829,13 +837,18 @@ int main(int argc, char** argv)
   /* Be clean. */
   if(rank == 0){
     polybench_stop_instruments;
-    //polybench_print_instruments;
+    polybench_print_instruments;
 
   /* Prevent dead-code elimination. All live-out data must be printed
      by the function call in argument. */
 
-    my_print_array(stderr, nx, ny, nz, full_cube);
+    FILE *out_ptr = fopen(output_path,"wb");
+
+    fwrite(full_cube, sizeof(DATA_TYPE), nx * ny * nz, out_ptr);
     
+    // my_print_array(stderr, nx, ny, nz, full_cube);
+
+    fclose(out_ptr);
 
     free(full_cube);
   }
