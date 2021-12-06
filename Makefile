@@ -39,7 +39,10 @@ deriche_ref:
 	${CC} ${CFLAGS} ${EXTRA_FLAGS}  -o ${BIN_DIR}/deriche_ref polybench/medley/deriche/deriche.c -DW=${DERICHE_DIM} -DH=${DERICHE_DIM}
 
 deriche_mpi_baseline:
-	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BINARY_DERICHE_MPI_BASELINE} ${SRC_DIR}/deriche/deriche_mpi_baseline.c polybench/utilities/polybench.c
+	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c
+
+deriche_mpi_rdma:
+	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c
 
 run: deriche
 	# mpiexec -np 2 ./${BINARY_DERICHE}
