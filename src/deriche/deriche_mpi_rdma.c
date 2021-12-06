@@ -57,8 +57,8 @@ static void print_array(long w, long h, DATA_TYPE *imgOut) {
   POLYBENCH_DUMP_FINISH;
 }
 
-static void deriche_horizontal(long bw, long h, DATA_TYPE *imgInPriv,
-                               DATA_TYPE *y1) {
+static void deriche_horizontal(long bw, long h, long bh, DATA_TYPE *imgInPriv,
+                               DATA_TYPE *y1, int rank, MPI_Win imgOutWin) {
   DATA_TYPE xm1, ym1, ym2;
   DATA_TYPE xp1, xp2;
   DATA_TYPE yp1, yp2;
@@ -89,6 +89,10 @@ static void deriche_horizontal(long bw, long h, DATA_TYPE *imgInPriv,
       yp2 = yp1;
       yp1 = y2t;
       y1[ind(i, j, h)] = c1 * (y1[ind(i, j, h)] + y2t);
+      if (j % bh == 0) {
+        MPI_Put(y1 + ind(i, j, h), bh, MPI_DOUBLE, j / bh, (rank * bw + i) * bh,
+                bh, MPI_DOUBLE, imgOutWin);
+      }
     }
   }
 }
@@ -177,9 +181,13 @@ int main(int argc, char **argv) {
   DATA_TYPE *imgIn = NULL;
   DATA_TYPE *imgOut = NULL;
   DATA_TYPE *imgInPriv = malloc(bw * h * sizeof(DATA_TYPE));
-  DATA_TYPE *imgOutPriv = malloc(w * bh * sizeof(DATA_TYPE));
   DATA_TYPE *y1 = malloc(bw * h * sizeof(DATA_TYPE));
   DATA_TYPE *y2 = malloc(w * bh * sizeof(DATA_TYPE));
+
+  DATA_TYPE *imgOutPriv;
+  MPI_Win imgOutWin;
+  MPI_Win_allocate(w * bh * sizeof(DATA_TYPE), sizeof(DATA_TYPE), MPI_INFO_NULL,
+                   MPI_COMM_WORLD, &imgOutPriv, &imgOutWin);
 
   /* Initialize array(s). */
   // TODO: each rank initializes its own.
@@ -211,16 +219,18 @@ int main(int argc, char **argv) {
   c1 = c2 = 1;
 
   /* Run kernel. */
-  deriche_horizontal(bw, h, imgInPriv, y1);
-  MPI_Alltoall(y1, 1, block_t, imgOutPriv, bw * bh, MPI_DOUBLE, MPI_COMM_WORLD);
+  MPI_Win_fence(0, imgOutWin);
+  deriche_horizontal(bw, h, bh, imgInPriv, y1, rank, imgOutWin);
+  MPI_Win_fence(0, imgOutWin);
   deriche_vertical(w, bh, imgOutPriv, y2);
-  MPI_Gather(imgOutPriv, w * bh, MPI_DOUBLE, imgOut, 1, bh_cols_t, ROOT_RANK,
-             MPI_COMM_WORLD);
 
   /* Stop and print timer. */
   // polybench_stop_instruments;
   // polybench_print_instruments;
   double t_end = MPI_Wtime();
+
+  MPI_Gather(imgOutPriv, w * bh, MPI_DOUBLE, imgOut, 1, bh_cols_t, ROOT_RANK,
+             MPI_COMM_WORLD);
 
   if (rank == ROOT_RANK) {
     printf("%0.6lf\n", t_end - t_start);
@@ -233,7 +243,7 @@ int main(int argc, char **argv) {
   free(imgIn);
   free(imgOut);
   free(imgInPriv);
-  free(imgOutPriv);
+  MPI_Win_free(&imgOutWin);
   free(y1);
   free(y2);
   MPI_Type_free(&block_t);
