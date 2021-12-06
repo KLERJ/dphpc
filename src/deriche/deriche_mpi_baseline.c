@@ -214,13 +214,14 @@ int main(int argc, char **argv) {
   deriche_horizontal(bw, h, imgInPriv, y1);
   MPI_Alltoall(y1, 1, block_t, imgOutPriv, bw * bh, MPI_DOUBLE, MPI_COMM_WORLD);
   deriche_vertical(w, bh, imgOutPriv, y2);
-  MPI_Gather(imgOutPriv, w * bh, MPI_DOUBLE, imgOut, 1, bh_cols_t, ROOT_RANK,
-             MPI_COMM_WORLD);
 
   /* Stop and print timer. */
   // polybench_stop_instruments;
   // polybench_print_instruments;
   double t_end = MPI_Wtime();
+
+  MPI_Gather(imgOutPriv, w * bh, MPI_DOUBLE, imgOut, 1, bh_cols_t, ROOT_RANK,
+             MPI_COMM_WORLD);
 
   if (rank == ROOT_RANK) {
     printf("%0.6lf\n", t_end - t_start);
