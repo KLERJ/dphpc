@@ -30,13 +30,15 @@ DATA_TYPE a1, a2, a3, a4, a5, a6, a7, a8;
 DATA_TYPE b1, b2, c1, c2;
 
 /* Array initialization. */
-static void init_array(long w, long h, DATA_TYPE *imgIn) {
+static void init_array_private(long bw, long h, int rank, DATA_TYPE *imgIn) {
   long i, j;
+  long istart = bw * rank;
 
   // input should be between 0 and 1 (grayscale image pixel)
-  for (i = 0; i < w; i++)
+  for (i = 0; i < bw; i++)
     for (j = 0; j < h; j++)
-      imgIn[ind(i, j, h)] = (DATA_TYPE)((313 * i + 991 * j) % 65536) / 65535.0f;
+      imgIn[ind(i, j, h)] =
+          (DATA_TYPE)((313 * (istart + i) + 991 * j) % 65536) / 65535.0f;
 }
 
 /* DCE code. Must scan the entire live-out data.
@@ -58,7 +60,8 @@ static void print_array(long w, long h, DATA_TYPE *imgOut) {
 }
 
 static void deriche_horizontal(long bw, long h, long bh, DATA_TYPE *imgInPriv,
-                               DATA_TYPE *y1, int rank, MPI_Win imgOutWin) {
+                               DATA_TYPE *y1, int rank, int size,
+                               MPI_Win imgOutWin) {
   DATA_TYPE xm1, ym1, ym2;
   DATA_TYPE xp1, xp2;
   DATA_TYPE yp1, yp2;
@@ -76,6 +79,7 @@ static void deriche_horizontal(long bw, long h, long bh, DATA_TYPE *imgInPriv,
     }
   }
 
+  MPI_Request reqs[bw * size];
   for (long i = 0; i < bw; i++) {
     yp1 = SCALAR_VAL(0.0);
     yp2 = SCALAR_VAL(0.0);
@@ -90,11 +94,14 @@ static void deriche_horizontal(long bw, long h, long bh, DATA_TYPE *imgInPriv,
       yp1 = y2t;
       y1[ind(i, j, h)] = c1 * (y1[ind(i, j, h)] + y2t);
       if (j % bh == 0) {
-        MPI_Put(y1 + ind(i, j, h), bh, MPI_DOUBLE, j / bh, (rank * bw + i) * bh,
-                bh, MPI_DOUBLE, imgOutWin);
+        int target_rank = j / bh;
+        MPI_Rput(y1 + ind(i, j, h), bh, MPI_DOUBLE, target_rank,
+                 (rank * bw + i) * bh, bh, MPI_DOUBLE, imgOutWin,
+                 &reqs[ind(i, target_rank, size)]);
       }
     }
   }
+  MPI_Waitall(bw * size, reqs, MPI_STATUSES_IGNORE);
 }
 
 static void deriche_vertical(long w, long bh, DATA_TYPE *imgOutPriv,
@@ -178,7 +185,6 @@ int main(int argc, char **argv) {
 
   /* Variable declaration/allocation. */
   DATA_TYPE alpha;
-  DATA_TYPE *imgIn = NULL;
   DATA_TYPE *imgOut = NULL;
   DATA_TYPE *imgInPriv = malloc(bw * h * sizeof(DATA_TYPE));
   DATA_TYPE *y1 = malloc(bw * h * sizeof(DATA_TYPE));
@@ -190,17 +196,12 @@ int main(int argc, char **argv) {
                    MPI_COMM_WORLD, &imgOutPriv, &imgOutWin);
 
   /* Initialize array(s). */
-  // TODO: each rank initializes its own.
   if (rank == ROOT_RANK) {
-    imgIn = malloc(w * h * sizeof(DATA_TYPE));
     imgOut = malloc(w * h * sizeof(DATA_TYPE));
-    init_array(w, h, imgIn);
   }
+  init_array_private(bw, h, rank, imgInPriv);
 
   alpha = 0.25; // parameter of the filter
-
-  MPI_Scatter(imgIn, bw * h, MPI_DOUBLE, imgInPriv, bw * h, MPI_DOUBLE,
-              ROOT_RANK, MPI_COMM_WORLD);
 
   /* Start timer. */
   // polybench_start_instruments;
@@ -220,7 +221,7 @@ int main(int argc, char **argv) {
 
   /* Run kernel. */
   MPI_Win_fence(0, imgOutWin);
-  deriche_horizontal(bw, h, bh, imgInPriv, y1, rank, imgOutWin);
+  deriche_horizontal(bw, h, bh, imgInPriv, y1, rank, size, imgOutWin);
   MPI_Win_fence(0, imgOutWin);
   deriche_vertical(w, bh, imgOutPriv, y2);
 
@@ -240,7 +241,6 @@ int main(int argc, char **argv) {
   }
 
   /* Be clean. */
-  free(imgIn);
   free(imgOut);
   free(imgInPriv);
   MPI_Win_free(&imgOutWin);

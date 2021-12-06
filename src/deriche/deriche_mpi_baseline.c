@@ -30,13 +30,15 @@ DATA_TYPE a1, a2, a3, a4, a5, a6, a7, a8;
 DATA_TYPE b1, b2, c1, c2;
 
 /* Array initialization. */
-static void init_array(long w, long h, DATA_TYPE *imgIn) {
+static void init_array_private(long bw, long h, int rank, DATA_TYPE *imgIn) {
   long i, j;
+  long istart = bw * rank;
 
   // input should be between 0 and 1 (grayscale image pixel)
-  for (i = 0; i < w; i++)
+  for (i = 0; i < bw; i++)
     for (j = 0; j < h; j++)
-      imgIn[ind(i, j, h)] = (DATA_TYPE)((313 * i + 991 * j) % 65536) / 65535.0f;
+      imgIn[ind(i, j, h)] =
+          (DATA_TYPE)((313 * (istart + i) + 991 * j) % 65536) / 65535.0f;
 }
 
 /* DCE code. Must scan the entire live-out data.
@@ -174,7 +176,6 @@ int main(int argc, char **argv) {
 
   /* Variable declaration/allocation. */
   DATA_TYPE alpha;
-  DATA_TYPE *imgIn = NULL;
   DATA_TYPE *imgOut = NULL;
   DATA_TYPE *imgInPriv = malloc(bw * h * sizeof(DATA_TYPE));
   DATA_TYPE *imgOutPriv = malloc(w * bh * sizeof(DATA_TYPE));
@@ -182,17 +183,12 @@ int main(int argc, char **argv) {
   DATA_TYPE *y2 = malloc(w * bh * sizeof(DATA_TYPE));
 
   /* Initialize array(s). */
-  // TODO: each rank initializes its own.
   if (rank == ROOT_RANK) {
-    imgIn = malloc(w * h * sizeof(DATA_TYPE));
     imgOut = malloc(w * h * sizeof(DATA_TYPE));
-    init_array(w, h, imgIn);
   }
+  init_array_private(bw, h, rank, imgInPriv);
 
   alpha = 0.25; // parameter of the filter
-
-  MPI_Scatter(imgIn, bw * h, MPI_DOUBLE, imgInPriv, bw * h, MPI_DOUBLE,
-              ROOT_RANK, MPI_COMM_WORLD);
 
   /* Start timer. */
   // polybench_start_instruments;
@@ -231,7 +227,6 @@ int main(int argc, char **argv) {
   }
 
   /* Be clean. */
-  free(imgIn);
   free(imgOut);
   free(imgInPriv);
   free(imgOutPriv);
