@@ -8,7 +8,6 @@ BIN_DIR=./bin
 TEST_DIR=./test
 BINARY_DERICHE=${BIN_DIR}/deriche
 BINARY_DERICHE_OMP=${BIN_DIR}/deriche_omp
-BINARY_DERICHE_MPI_BASELINE=${BIN_DIR}/deriche_mpi_baseline
 BINARY_SEIDEL2D_OMP=${BIN_DIR}/seidel-2d_omp
 BINARY_HEAT3D_OMP=${BIN_DIR}/heat-3d_omp
 BINARY_HEAT3D_MPI=${BIN_DIR}/heat-3d_mpi
