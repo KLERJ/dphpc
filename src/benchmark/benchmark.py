@@ -14,23 +14,30 @@ class Benchmark:
             self.type = 'seidel-2d'
         elif 'heat-3d' in program:
             self.type = 'heat-3d'
-        self.program = BIN_DIR + program
+
         try:
             self.n_runs = int(n_runs)
         except TypeError:
             self.n_runs = 1
+
+        self.program = program
         self.dataset_size = dataset_size
         self.test = test
         self.show_diff = show_diff
         self.n_procs = n_procs
+        
 
     def make(self):
-        p = subprocess.run(['make', f'SIZE={self.dataset_size}', 'DUMP=' + '-DPOLYBENCH_DUMP_ARRAYS' if self.test else ''],
-            cwd=ROOT_DIR, capture_output=True)
+        subprocess.run(['make', 'clean'], cwd=ROOT_DIR, capture_output=True)
+        command = ['make', 'DERICHE_DIM=64', f'SIZE={self.dataset_size}']
+        if self.test:
+            command += 'DUMP=-DPOLYBENCH_DUMP_ARRAYS'
+        p = subprocess.run(command, cwd=ROOT_DIR, capture_output=True)
+
 
     def check_implementation(self):
         self.make()
-        p = subprocess.run([self.program], capture_output=True, text=True)
+        p = subprocess.run(['./'+self.program], capture_output=True, text=True, cwd=BIN_DIR)
 
         with open('diff_output', 'w') as text_file:
             text_file.write(p.stderr)
@@ -45,19 +52,38 @@ class Benchmark:
             print('Correct output' if diff.stdout == '' else 'Wrong output')
         
     
-    def create_csv(self):
-        self.make()
-        # TODO
-        raise NotImplementedError()
+    def bench(self):
+        # ref impl
+        P = ROOT_DIR + 'polybench/medley/deriche/'
+        subprocess.run(['make', 'clean'], cwd=P, capture_output=True)
+        subprocess.run(['make', f'EXTRA_FLAGS=-D{self.dataset_size}_DATASET'], cwd=P, capture_output=True)
         runtimes = []
         for _ in range(self.n_runs):
-            p = subprocess.run([*self.program.split(' ')], capture_output=True, text=True)
-            time = float(p.stdout)
-            output = p.stderr
-            runtimes.append(time)
-
+            ref_impl = subprocess.run(['./deriche'], cwd=P, capture_output=True)
+            runtimes.append(float(ref_impl.stdout))
         average = sum(runtimes) / len(runtimes)
-        print(average)
+        print('Ref impl runtime:', average)
+
+        # bench impl
+        self.make()
+        averages = []
+        for np in self.n_procs:
+            runtimes = []
+            for _ in range(self.n_runs):
+                p = subprocess.run(['mpiexec', '-np', np, f'./{self.program}'], capture_output=True, text=True, cwd=BIN_DIR)
+                try:
+                    time = float(p.stdout)
+                except ValueError:
+                    print('Program quit unexpectedly:')
+                    print(p.stderr)
+                    print(p.stdout)
+
+                runtimes.append(time)
+            average = sum(runtimes) / len(runtimes)
+            averages.append(average)
+        print('Runtimes:', averages)
+        print('With #cores:', self.n_procs)
+
         
 
 def main():
@@ -81,7 +107,7 @@ def main():
     if test:
         bench.check_implementation()
     else:
-        bench.create_csv()
+        bench.bench()
 
 
 if __name__ == '__main__':
