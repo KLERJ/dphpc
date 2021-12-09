@@ -24,7 +24,7 @@ endif
 
 MPI_CC=mpicc
 
-all: deriche deriche_omp seidel-2d_omp heat-3d_omp heat-3d_mpi
+all: deriche_omp deriche deriche_ref deriche_mpi_baseline deriche_mpi_rdma seidel-2d_omp heat-3d_omp heat-3d_mpi
 
 .PHONY: clean run
 
