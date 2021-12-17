@@ -1,5 +1,5 @@
-SIZE=SMALL
-CFLAGS=-Wall -Wextra -Wno-comment -O3 -I polybench/utilities polybench/utilities/polybench.c
+SIZE=MINI
+CFLAGS=-Wall -Wextra -Wno-comment -O3 -march=skylake -mavx2 -I polybench/utilities polybench/utilities/polybench.c
 DUMP=
 EXTRA_FLAGS=-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME -D${SIZE}_DATASET ${DUMP}
 
