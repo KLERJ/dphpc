@@ -63,10 +63,9 @@ class Benchmark:
             runtimes.append(float(ref_impl.stdout))
         average = sum(runtimes) / len(runtimes)
         print('Ref impl runtime:', average)
-
         # bench impl
         self.make()
-        averages = []
+        all_runtimes = []
         for np in self.n_procs:
             runtimes = []
             for _ in range(self.n_runs):
@@ -74,14 +73,13 @@ class Benchmark:
                 try:
                     time = float(p.stdout)
                 except ValueError:
-                    print('Program quit unexpectedly:')
+                    print('Error: Program returned the following:')
                     print(p.stderr)
                     print(p.stdout)
 
                 runtimes.append(time)
-            average = sum(runtimes) / len(runtimes)
-            averages.append(average)
-        print('Runtimes:', averages)
+            all_runtimes.append(runtimes)
+        print('Runtimes:', all_runtimes)
         print('With #cores:', self.n_procs)
 
         
