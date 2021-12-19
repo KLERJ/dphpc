@@ -18,6 +18,7 @@
 #include <polybench.h>
 
 /* Include benchmark-specific header. */
+#include "bm.h"
 #include "heat-3d.h"
 #include <mpi.h>
 #include <stdbool.h>
@@ -91,8 +92,7 @@ static void init_array(int n, DATA_TYPE *A) {
   for (i = 0; i < n; i++)
     for (j = 0; j < n; j++)
       for (k = 0; k < n; k++)
-        *IDX(A, i, j, k, n, n) = c++;
-  // *IDX(A, i, j, k, n, n) = (DATA_TYPE) (i*i + j + (n-k))* 10 / (n);
+        *IDX(A, i, j, k, n, n) = (DATA_TYPE)(i * i + j + (n - k)) * 10 / (n);
 }
 
 static void my_init_array(int nx, int ny, int nz, DATA_TYPE *A) {
@@ -101,10 +101,10 @@ static void my_init_array(int nx, int ny, int nz, DATA_TYPE *A) {
   for (i = 0; i < nx; i++)
     for (j = 0; j < ny; j++)
       for (k = 0; k < nz; k++) {
-        *IDX(A, i, j, k, ny, nz) = (i + 1) * c++;
+        *IDX(A, i, j, k, ny, nz) =
+            (DATA_TYPE)(i * i + j + (nz - k)) * 10 / (nz);
 
-        // *IDX(A, i, j, k, ny, nz) =  (DATA_TYPE) (i*i + j + (nz-k))*
-        // 10 / (nz);
+        // *IDX(A, i, j, k, ny, nz) = (i + 1) * c++;
       }
 }
 
@@ -136,8 +136,6 @@ static void my_print_array(FILE *ptr, int nx, int ny, int nz, DATA_TYPE *A)
   for (i = 0; i < nx; i++) {
     for (k = 0; k < nz; k++) {
       for (j = 0; j < ny; j++) {
-        //  if ((i * n * n + j * n + k) % 20 == 0)
-        //  fprintf(POLYBENCH_DUMP_TARGET, "\n");
         fprintf(ptr, "%6.2lf ", *IDX(A, i, j, k, ny, nz));
       }
       fprintf(ptr, "\n");
@@ -579,18 +577,33 @@ int main(int argc, char **argv) {
   int sx, sy, sz;
   int tsteps = TSTEPS;
   char *output_path;
+  char *benchmark_path;
 
-  if (argc == 2) {
+  bm_handle benchmark_exclusive_compute;
+  bm_handle benchmark_overlap_compute;
+  bm_handle benchmark_communication;
+  bm_handle benchmark_iter;
+
+  if (argc == 3) {
     output_path = argv[1];
-  } else if (argc == 4) {
+    benchmark_path = argv[2];
+  } else if (argc == 5) {
     sscanf(argv[1], "%d", &nx);
     sscanf(argv[2], "%d", &tsteps);
     ny = nz = nx;
     output_path = argv[3];
+    benchmark_path = argv[4];
   } else {
-    fprintf(stderr, "Usage: %s <N_SIZE> <T_STEPS> OUTPUT_DUMP\n", argv[0]);
+    fprintf(stderr,
+            "Usage: %s <N_SIZE> <T_STEPS> OUTPUT_DUMP BENCHMARK_DUMP_PATH\n",
+            argv[0]);
     exit(1);
   }
+
+  bm_init(&benchmark_exclusive_compute, 2 * tsteps);
+  bm_init(&benchmark_overlap_compute, 2 * tsteps);
+  bm_init(&benchmark_communication, 2 * tsteps);
+  bm_init(&benchmark_iter, 2 * tsteps);
 
   (void)&print_array;
   (void)&init_array;
@@ -792,6 +805,9 @@ int main(int argc, char **argv) {
    * ***********************************************************************/
   for (int t = 1; t <= 2 * tsteps; t++) {
 
+    bm_start(&benchmark_communication);
+    bm_start(&benchmark_iter);
+
     // Send/Receive neighbor faces
     const int num_requsts = 2 * 6;
     MPI_Request requests[num_requsts];
@@ -825,12 +841,16 @@ int main(int argc, char **argv) {
     MPI_Irecv(neighborFaces[5], 1, yzFace_neighbor, back, 0, MPI_COMM_WORLD,
               requests + 11);
 
+    bm_start(&benchmark_overlap_compute);
     // Start computing inner cube (which is independedt of the neighbors)
     compute_inner_step_kernel_heat_3d(sx, sy, sz, A, B);
+    bm_stop(&benchmark_overlap_compute);
 
     // Wait for all the communication to complete
     MPI_Waitall(num_requsts, requests, MPI_STATUS_IGNORE);
+    bm_stop(&benchmark_communication);
 
+    bm_start(&benchmark_exclusive_compute);
     // Compute the border faces
     compute_border_step_kernel_heat_3d(sx, sy, sz, A, B, neighbors,
                                        neighborFaces);
@@ -839,6 +859,9 @@ int main(int argc, char **argv) {
     tmp = A;
     A = B;
     B = tmp;
+
+    bm_stop(&benchmark_exclusive_compute);
+    bm_stop(&benchmark_iter);
   }
 
   for (int i = 0; i < p; i++) {
@@ -871,6 +894,20 @@ int main(int argc, char **argv) {
     free(full_cube);
   }
 
+  // Dump benchmarks
+  char bm_output_name[512];
+  snprintf(bm_output_name, 512, "%s/benchmark_%d.csv", benchmark_path, rank);
+  FILE *benchmark_dump = fopen(bm_output_name, "w");
+  if (benchmark_dump == NULL) {
+    fprintf(stderr, "Couldn't open file\n");
+  }
+  bm_print_events(&benchmark_communication, benchmark_dump);
+  bm_print_events(&benchmark_overlap_compute, benchmark_dump);
+  bm_print_events(&benchmark_exclusive_compute, benchmark_dump);
+  bm_print_events(&benchmark_iter, benchmark_dump);
+
+  fclose(benchmark_dump);
+
   free(sendcounts);
   free(displs);
 
@@ -884,6 +921,11 @@ int main(int argc, char **argv) {
   for (int i = 0; i < 6; i++) {
     free(neighborFaces[i]);
   }
+
+  bm_destroy(&benchmark_communication);
+  bm_destroy(&benchmark_overlap_compute);
+  bm_destroy(&benchmark_exclusive_compute);
+  bm_destroy(&benchmark_iter);
 
   MPI_Type_free(&subCubeSend);
   MPI_Type_free(&subCubeRcv);

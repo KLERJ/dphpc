@@ -1,5 +1,5 @@
 SIZE=MINI
-CFLAGS=-Wall -Wextra -Wno-comment -O3 -march=skylake -mavx2 -I polybench/utilities polybench/utilities/polybench.c
+CFLAGS=-Wall -Wextra -Wno-comment -O3 -march=native -mavx -I polybench/utilities polybench/utilities/polybench.c -I src/benchmark src/benchmark/bm.c
 DUMP=
 EXTRA_FLAGS=-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME -D${SIZE}_DATASET ${DUMP}
 
