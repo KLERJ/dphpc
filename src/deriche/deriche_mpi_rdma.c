@@ -24,6 +24,8 @@
 
 #define ROOT_RANK 0
 #define ind(i, j, size) ((i) * (size) + (j))
+// How many rows does a segment contain?
+#define SW 4
 
 DATA_TYPE k;
 DATA_TYPE a1, a2, a3, a4, a5, a6, a7, a8;
@@ -61,7 +63,8 @@ static void print_array(long w, long h, DATA_TYPE *imgOut) {
 
 static void deriche_horizontal(long bw, long h, long bh, DATA_TYPE *imgInPriv,
                                DATA_TYPE *y1, int rank, int size,
-                               MPI_Win imgOutWin) {
+                               MPI_Win imgOutWin,
+                               MPI_Datatype segment_block_t) {
   DATA_TYPE xm1, ym1, ym2;
   DATA_TYPE xp1, xp2;
   DATA_TYPE yp1, yp2;
@@ -79,7 +82,6 @@ static void deriche_horizontal(long bw, long h, long bh, DATA_TYPE *imgInPriv,
     }
   }
 
-  MPI_Request reqs[bw * size];
   for (long i = 0; i < bw; i++) {
     yp1 = SCALAR_VAL(0.0);
     yp2 = SCALAR_VAL(0.0);
@@ -93,15 +95,13 @@ static void deriche_horizontal(long bw, long h, long bh, DATA_TYPE *imgInPriv,
       yp2 = yp1;
       yp1 = y2t;
       y1[ind(i, j, h)] = c1 * (y1[ind(i, j, h)] + y2t);
-      if (j % bh == 0) {
+      if (((i + 1) % SW == 0) && (j % bh == 0)) {
         int target_rank = j / bh;
-        MPI_Rput(y1 + ind(i, j, h), bh, MPI_DOUBLE, target_rank,
-                 (rank * bw + i) * bh, bh, MPI_DOUBLE, imgOutWin,
-                 &reqs[ind(i, target_rank, size)]);
+        MPI_Put(y1 + ind(i - SW + 1, j, h), 1, segment_block_t, target_rank,
+                (rank * bw + i - SW + 1) * bh, bh * SW, MPI_DOUBLE, imgOutWin);
       }
     }
   }
-  MPI_Waitall(bw * size, reqs, MPI_STATUSES_IGNORE);
 }
 
 static void deriche_vertical(long w, long bh, DATA_TYPE *imgOutPriv,
@@ -176,6 +176,17 @@ int main(int argc, char **argv) {
   MPI_Type_create_resized(_block_t, 0, bh * sizeof(double), &block_t);
   MPI_Type_commit(&block_t);
 
+  // Segment block type : sw rows, bh columns each
+  MPI_Datatype _segment_block_t, segment_block_t;
+  MPI_Type_vector(SW, bh, h, MPI_DOUBLE, &_segment_block_t);
+  MPI_Type_commit(&_segment_block_t);
+  // Next segment block starts bh elements from the last one
+  MPI_Type_create_resized(_segment_block_t, 0, bh * sizeof(double),
+                          &segment_block_t);
+  MPI_Type_commit(&segment_block_t);
+
+  // Column segment type: w rows, bh columns each
+  // Used only for gathering outputh
   MPI_Datatype _bh_cols_t;
   MPI_Type_vector(w, bh, h, MPI_DOUBLE, &_bh_cols_t);
   MPI_Type_commit(&_bh_cols_t);
@@ -221,7 +232,8 @@ int main(int argc, char **argv) {
 
   /* Run kernel. */
   MPI_Win_fence(0, imgOutWin);
-  deriche_horizontal(bw, h, bh, imgInPriv, y1, rank, size, imgOutWin);
+  deriche_horizontal(bw, h, bh, imgInPriv, y1, rank, size, imgOutWin,
+                     segment_block_t);
   MPI_Win_fence(0, imgOutWin);
   deriche_vertical(w, bh, imgOutPriv, y2);
 
@@ -249,6 +261,8 @@ int main(int argc, char **argv) {
   free(y2);
   MPI_Type_free(&block_t);
   MPI_Type_free(&_block_t);
+  MPI_Type_free(&segment_block_t);
+  MPI_Type_free(&_segment_block_t);
   MPI_Type_free(&bh_cols_t);
   MPI_Type_free(&_bh_cols_t);
 
