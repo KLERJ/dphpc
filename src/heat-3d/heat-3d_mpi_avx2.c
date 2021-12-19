@@ -222,7 +222,7 @@ void compute_inner_step_kernel_heat_3d(int nx,
               h1 = _mm_add_pd(h1, l1);
               h2 = _mm_add_pd(h2, l2);
 
-              k1 = _mm256_set_m128(h2, h1);
+              k1 = _mm256_set_m128d(h2, h1);
 
               r1 = _mm256_add_pd(r1, r2);
               r1 = _mm256_mul_pd(r1, consts1);
