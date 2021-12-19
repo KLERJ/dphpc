@@ -194,13 +194,13 @@ void compute_inner_step_kernel_heat_3d(int nx,
               // bits to lowest.
               
               // Summing elements not from the z axis
-              __m256d ip1 = _mm256_load_pd(IDX(A, i+1, j, k, ny, nz));
-              __m256d im1 = _mm256_load_pd(IDX(A, i-1, j, k, ny, nz));
-              __m256d jp1 = _mm256_load_pd(IDX(A, i, j+1, k, ny, nz));
-              __m256d jm1 = _mm256_load_pd(IDX(A, i, j-1, k, ny, nz));
+              __m256d ip1 = _mm256_loadu_pd(IDX(A, i+1, j, k, ny, nz));
+              __m256d im1 = _mm256_loadu_pd(IDX(A, i-1, j, k, ny, nz));
+              __m256d jp1 = _mm256_loadu_pd(IDX(A, i, j+1, k, ny, nz));
+              __m256d jm1 = _mm256_loadu_pd(IDX(A, i, j-1, k, ny, nz));
 
-              __m256d kp1 = _mm256_load_pd(IDX(A, i, j, k+1, ny, nz)); // k+4, k+3, k+2, k+1
-              __m256d km1 = _mm256_load_pd(IDX(A, i, j, k-1, ny, nz)); // k+2, k+1, k, k-1
+              __m256d kp1 = _mm256_loadu_pd(IDX(A, i, j, k+1, ny, nz)); // k+4, k+3, k+2, k+1
+              __m256d km1 = _mm256_loadu_pd(IDX(A, i, j, k-1, ny, nz)); // k+2, k+1, k, k-1
 
               // The following can all be done in parallel
               __m256d r1 = _mm256_add_pd(ip1, im1);
