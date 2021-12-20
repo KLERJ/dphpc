@@ -15,6 +15,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <immintrin.h>
+
 /* Include polybench common header. */
 #include <mpi.h>
 #include <polybench.h>
@@ -29,8 +31,11 @@
 #define SW 4
 
 DATA_TYPE k;
+__m256d k_;
 DATA_TYPE a1, a2, a3, a4, a5, a6, a7, a8;
+__m256d a1_, a2_, a3_, a4_, a5_, a6_, a7_, a8_;
 DATA_TYPE b1, b2, c1, c2;
+__m256d b1_, b2_, c1_, c2_;
 
 /* Array initialization. */
 static void init_array_private(long bw, long h, int rank, DATA_TYPE *imgIn) {
@@ -67,36 +72,118 @@ static void deriche_horizontal(long bw, long h, long bh,
                                DATA_TYPE *restrict y1, int size,
                                MPI_Datatype segment_block_t) {
 
-  DATA_TYPE xm1, ym1, ym2;
-  DATA_TYPE xp1, xp2;
-  DATA_TYPE yp1, yp2;
-  for (long i = 0; i < bw; i++) {
-    ym1 = SCALAR_VAL(0.0);
-    ym2 = SCALAR_VAL(0.0);
-    xm1 = SCALAR_VAL(0.0);
-    DATA_TYPE y1t;
-    for (long j = 0; j < h; j++) {
-      y1t = a1 * imgInPriv[ind(i, j, h)] + a2 * xm1 + b1 * ym1 + b2 * ym2;
-      xm1 = imgInPriv[ind(i, j, h)];
-      ym2 = ym1;
-      ym1 = y1t;
-      y1[ind(i, j, h)] = y1t;
+  DATA_TYPE xm1_0, ym1_0, ym2_0, ym1_1, ym2_1, ym1_2, ym2_2, ym1_3, ym2_3;
+  for (long i = 0; i < bw; i+=1) {
+    xm1_0 = SCALAR_VAL(0.0);
+    ym1_0 = SCALAR_VAL(0.0);
+    ym2_0 = SCALAR_VAL(0.0);
+
+    DATA_TYPE y1t_0, y1t_1, y1t_2, y1t_3;
+
+    // index 0 to 3
+    long j = 0;
+    long idx_0 = (i * h) + j;
+    DATA_TYPE *firstHalf = (DATA_TYPE*) malloc(4*sizeof(DATA_TYPE));
+
+    __m256d xm1_X1 = _mm256_load_pd(imgInPriv + idx_0);
+    __m256d xm1_X2 = _mm256_set_pd(imgInPriv[idx_0 + 2], imgInPriv[idx_0 + 1], imgInPriv[idx_0], 0.0);
+    __m256d a2xmX2 = _mm256_mul_pd(a2_, xm1_X2);
+    __m256d firstHalf_ = _mm256_fmadd_pd(a1_, xm1_X1, a2xmX2);
+    _mm256_store_pd(firstHalf, firstHalf_);
+
+    y1t_0 = firstHalf[0] + b1 * ym1_0 + b2 * ym2_0;
+    ym2_1 = ym1_0;
+    ym1_1 = y1t_0;
+
+    y1t_1 = firstHalf[1] + b1 * ym1_1 + b2 * ym2_1;
+    ym2_2 = ym1_1;
+    ym1_2 = y1t_1;
+
+    y1t_2 = firstHalf[2] + b1 * ym1_2 + b2 * ym2_2;
+    ym2_3 = ym1_2;
+    ym1_3 = y1t_2;
+
+    y1t_3 = firstHalf[3] + b1 * ym1_3 + b2 * ym2_3;
+    ym2_0 = ym1_3;
+    ym1_0 = y1t_3;
+
+    y1[idx_0]     = y1t_0;
+    y1[idx_0 + 1] = y1t_1;
+    y1[idx_0 + 2] = y1t_2;
+    y1[idx_0 + 3] = y1t_3;
+    
+    // index 4 to (h-1)
+    for (long j = 4; j < h; j+=4) {
+      long idx_0 = (i * h) + j;
+    
+      __m256d xm1_X1 = _mm256_load_pd(imgInPriv + idx_0);
+      __m256d xm1_X2 = _mm256_load_pd(imgInPriv + idx_0 - 1);
+      __m256d a2xmX2 = _mm256_mul_pd(a2_, xm1_X2);
+      __m256d firstHalf_ = _mm256_fmadd_pd(a1_, xm1_X1, a2xmX2);
+      _mm256_store_pd(firstHalf, firstHalf_);
+     
+      // xm1_1 = imgInPriv[idx_0];
+      // y1t_0 = a1 * xm1_1 + a2 * xm1_0 + b1 * ym1_0 + b2 * ym2_0;
+      // ym2_1 = ym1_0;
+      // ym1_1 = y1t_0;
+
+      // xm1_2 = imgInPriv[idx_1];
+      // y1t_1 = a1 * xm1_2 + a2 * xm1_1 + b1 * ym1_1 + b2 * ym2_1;
+      // ym2_2 = ym1_1;
+      // ym1_2 = y1t_1;
+
+      // xm1_3 = imgInPriv[idx_2];
+      // y1t_2 = a1 * xm1_3 + a2 * xm1_2 + b1 * ym1_2 + b2 * ym2_2;
+      // ym2_3 = ym1_2;
+      // ym1_3 = y1t_2;
+
+      // xm1_0 = imgInPriv[idx_3];
+      // y1t_3 = a1 * xm1_0 + a2 * xm1_3 + b1 * ym1_3 + b2 * ym2_3;
+      // ym2_0 = ym1_3;
+      // ym1_0 = y1t_3;
+      
+      y1t_0 = firstHalf[0] + b1 * ym1_0 + b2 * ym2_0;
+      ym2_1 = ym1_0;
+      ym1_1 = y1t_0;
+
+      y1t_1 = firstHalf[1] + b1 * ym1_1 + b2 * ym2_1;
+      ym2_2 = ym1_1;
+      ym1_2 = y1t_1;
+
+      y1t_2 = firstHalf[2] + b1 * ym1_2 + b2 * ym2_2;
+      ym2_3 = ym1_2;
+      ym1_3 = y1t_2;
+
+      y1t_3 = firstHalf[3] + b1 * ym1_3 + b2 * ym2_3;
+      ym2_0 = ym1_3;
+      ym1_0 = y1t_3;
+
+      y1[idx_0]     = y1t_0;
+      y1[idx_0 + 1] = y1t_1;
+      y1[idx_0 + 2] = y1t_2;
+      y1[idx_0 + 3] = y1t_3;
     }
   }
 
-  for (long i = 0; i < bw; i++) {
+  DATA_TYPE yp1, yp2;
+  DATA_TYPE xp1, xp2;
+
+  for (long i = 0; i < bw; i+=1) {
     yp1 = SCALAR_VAL(0.0);
     yp2 = SCALAR_VAL(0.0);
     xp1 = SCALAR_VAL(0.0);
     xp2 = SCALAR_VAL(0.0);
     DATA_TYPE y2t;
-    for (long j = h - 1; j >= 0; j--) {
+
+    for (long j = h - 1; j >= 0; j-=1) {
+      long idx = (i * h) + j;
+
       y2t = a3 * xp1 + a4 * xp2 + b1 * yp1 + b2 * yp2;
       xp2 = xp1;
-      xp1 = imgInPriv[ind(i, j, h)];
+      xp1 = imgInPriv[idx];
       yp2 = yp1;
       yp1 = y2t;
-      y1[ind(i, j, h)] = c1 * (y1[ind(i, j, h)] + y2t);
+      y1[idx] = c1 * (y1[idx] + y2t);
     }
 
     // Every SW rows (i.e. when one segment is complete) send it to processors
@@ -169,6 +256,7 @@ static void deriche_vertical(long w, long bh, DATA_TYPE *restrict imgOutPriv,
 }
 
 int main(int argc, char **argv) {
+
   /* Retrieve problem size. */
   long w = W;
   long h = H;
@@ -254,6 +342,20 @@ int main(int argc, char **argv) {
   b1 = POW_FUN(SCALAR_VAL(2.0), -alpha);
   b2 = -EXP_FUN(SCALAR_VAL(-2.0) * alpha);
   c1 = c2 = 1;
+
+  k_ = _mm256_set1_pd(k);
+  a1_ = _mm256_set1_pd(a1);
+  a2_ = _mm256_set1_pd(a2);
+  a3_ = _mm256_set1_pd(a3);
+  a4_ = _mm256_set1_pd(a4);
+  a5_ = _mm256_set1_pd(a5);
+  a6_ = _mm256_set1_pd(a6);
+  a7_ = _mm256_set1_pd(a7);
+  a8_ = _mm256_set1_pd(a8);
+  b1_ = _mm256_set1_pd(b1);
+  b2_ = _mm256_set1_pd(b2);
+  c1_ = _mm256_set1_pd(c1);
+  c2_ = _mm256_set1_pd(c2);
 
   /* Start receving segment blocks from other processors */
   const int segments_per_rank = bw / SW;
