@@ -20,6 +20,7 @@
 #include <polybench.h>
 
 /* Include benchmark-specific header. */
+#include "bm.h"
 #include "deriche.h"
 
 #define ROOT_RANK 0
@@ -30,6 +31,11 @@
 DATA_TYPE k;
 DATA_TYPE a1, a2, a3, a4, a5, a6, a7, a8;
 DATA_TYPE b1, b2, c1, c2;
+
+bm_handle benchmark_exclusive_compute;
+bm_handle benchmark_overlap_compute;
+bm_handle benchmark_communication;
+bm_handle benchmark_iter;
 
 /* Array initialization. */
 static void init_array_private(long bw, long h, int rank, DATA_TYPE *imgIn) {
@@ -95,10 +101,13 @@ static void deriche_horizontal(long bw, long h, long bh, DATA_TYPE *imgInPriv,
       yp2 = yp1;
       yp1 = y2t;
       y1[ind(i, j, h)] = c1 * (y1[ind(i, j, h)] + y2t);
-      if (((i + 1) % SW == 0) && (j % bh == 0)) {
-        int target_rank = j / bh;
-        MPI_Put(y1 + ind(i - SW + 1, j, h), 1, segment_block_t, target_rank,
+    }
+    if ((i + 1) % SW == 0) {
+      size_t offset = (i - SW + 1) * h;
+      for (int dst_rank = 0; dst_rank < size; dst_rank++) {
+        MPI_Put(y1 + offset, 1, segment_block_t, dst_rank,
                 (rank * bw + i - SW + 1) * bh, bh * SW, MPI_DOUBLE, imgOutWin);
+        offset += bh;
       }
     }
   }
@@ -168,6 +177,11 @@ int main(int argc, char **argv) {
   }
   long bw = w / size;
   long bh = h / size;
+
+  char *benchmark_path;
+  if (argc == 2) {
+    benchmark_path = argv[1];
+  }
 
   MPI_Datatype _block_t;
   MPI_Type_vector(bw, bh, h, MPI_DOUBLE, &_block_t);

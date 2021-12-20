@@ -40,7 +40,7 @@ void bm_stop(bm_handle *bm) {
 }
 
 void bm_print_events(bm_handle *bm, FILE *ptr) {
-  int i;
+  uint32_t i;
   for (i = 0; i < bm->iter - 1; i++) {
     fprintf(ptr, "%f,", bm->event_lengths[i]);
   }
