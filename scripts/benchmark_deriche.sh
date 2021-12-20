@@ -9,7 +9,7 @@ N_REPS=$1
 TARGET=$2
 
 # DATASETS=('MINI' 'SMALL' 'MEDIUM' 'LARGE' 'EXTRALARGE')
-DERICHE_DIMS=(100 1000 10000 20000 40000)
+DERICHE_DIMS=(10 11 12 13 14 15 16)
 
 SCRIPTS_DIR="$(dirname "$0")"
 PROJECT_DIR="${SCRIPTS_DIR}/.."
@@ -23,7 +23,7 @@ results_base="results/$TARGET"
 # for size in "${DATASETS[@]}"; do
 for dim in "${DERICHE_DIMS[@]}"; do
   make clean
-  make "${TARGET}" DERICHE_DIM="${dim}"
+  make "${TARGET}" DERICHE_DIM=$((2 ** ${dim}))
 
   for ncpus in {1,2,4,8,16,32}; do
 
