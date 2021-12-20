@@ -102,12 +102,22 @@ static void deriche_horizontal(long bw, long h, long bh, DATA_TYPE *imgInPriv,
       yp1 = y2t;
       y1[ind(i, j, h)] = c1 * (y1[ind(i, j, h)] + y2t);
     }
+
     if ((i + 1) % SW == 0) {
+      if (i + 1 == SW) {
+        bm_pause(&benchmark_exclusive_compute);
+        bm_start(&benchmark_communication);
+      }
+
       size_t offset = (i - SW + 1) * h;
       for (int dst_rank = 0; dst_rank < size; dst_rank++) {
         MPI_Put(y1 + offset, 1, segment_block_t, dst_rank,
                 (rank * bw + i - SW + 1) * bh, bh * SW, MPI_DOUBLE, imgOutWin);
         offset += bh;
+      }
+
+      if (i + 1 == SW) {
+        bm_start(&benchmark_overlap_compute);
       }
     }
   }
@@ -178,10 +188,14 @@ int main(int argc, char **argv) {
   long bw = w / size;
   long bh = h / size;
 
-  char *benchmark_path;
+  char *benchmark_path = NULL;
   if (argc == 2) {
     benchmark_path = argv[1];
   }
+  bm_init(&benchmark_exclusive_compute, 1);
+  bm_init(&benchmark_overlap_compute, 1);
+  bm_init(&benchmark_communication, 1);
+  bm_init(&benchmark_iter, 1);
 
   MPI_Datatype _block_t;
   MPI_Type_vector(bw, bh, h, MPI_DOUBLE, &_block_t);
@@ -231,6 +245,8 @@ int main(int argc, char **argv) {
   /* Start timer. */
   // polybench_start_instruments;
   double t_start = MPI_Wtime();
+  bm_start(&benchmark_iter);
+  bm_start(&benchmark_exclusive_compute);
 
   k = (SCALAR_VAL(1.0) - EXP_FUN(-alpha)) *
       (SCALAR_VAL(1.0) - EXP_FUN(-alpha)) /
@@ -248,8 +264,16 @@ int main(int argc, char **argv) {
   MPI_Win_fence(0, imgOutWin);
   deriche_horizontal(bw, h, bh, imgInPriv, y1, rank, size, imgOutWin,
                      segment_block_t);
+  bm_stop(&benchmark_overlap_compute);
   MPI_Win_fence(0, imgOutWin);
+
+  bm_stop(&benchmark_communication);
+
+  bm_resume(&benchmark_exclusive_compute);
   deriche_vertical(w, bh, imgOutPriv, y2);
+  bm_stop(&benchmark_exclusive_compute);
+
+  bm_stop(&benchmark_iter);
 
   /* Stop and print timer. */
   // polybench_stop_instruments;
@@ -267,7 +291,27 @@ int main(int argc, char **argv) {
     polybench_prevent_dce(print_array(w, h, imgOut));
   }
 
+  // Dump benchmarks
+  if (benchmark_path != NULL) {
+    char bm_output_name[512];
+    snprintf(bm_output_name, 512, "%s/benchmark_%d.csv", benchmark_path, rank);
+    FILE *benchmark_dump = fopen(bm_output_name, "w");
+    if (benchmark_dump == NULL) {
+      fprintf(stderr, "Couldn't open file\n");
+    }
+    bm_print_events(&benchmark_communication, benchmark_dump);
+    bm_print_events(&benchmark_overlap_compute, benchmark_dump);
+    bm_print_events(&benchmark_exclusive_compute, benchmark_dump);
+    bm_print_events(&benchmark_iter, benchmark_dump);
+    fclose(benchmark_dump);
+  }
+
   /* Be clean. */
+  bm_destroy(&benchmark_communication);
+  bm_destroy(&benchmark_overlap_compute);
+  bm_destroy(&benchmark_exclusive_compute);
+  bm_destroy(&benchmark_iter);
+
   free(imgOut);
   free(imgInPriv);
   MPI_Win_free(&imgOutWin);

@@ -32,6 +32,13 @@ int bm_init(bm_handle *bm, uint32_t num_iters) {
 
 void bm_start(bm_handle *bm) { bm->event_start = rtclock(); }
 
+void bm_resume(bm_handle *bm) { bm->event_start = rtclock(); }
+
+void bm_pause(bm_handle *bm) {
+  double diff = rtclock() - bm->event_start;
+  bm->event_lengths[bm->iter] += diff;
+}
+
 void bm_stop(bm_handle *bm) {
   double diff = rtclock() - bm->event_start;
 

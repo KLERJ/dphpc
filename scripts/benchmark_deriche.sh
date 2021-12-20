@@ -26,20 +26,20 @@ for dim in "${DERICHE_DIMS[@]}"; do
   make "${TARGET}" DERICHE_DIM="${dim}"
 
   for ncpus in {1,2,4,8,16,32}; do
-    results_dir="${results_base}/${ncpus}-cpu"
-    mkdir -p "${results_dir}"
 
-    if [[ "${TARGET}" =~ .*"omp".* ]]; then
-      export OMP_NUM_THREADS="${ncpus}"
-      for rep in "$(seq 1 "${N_REPS}")"; do
-        bin/"${TARGET}" > "$results_dir/$TARGET.$dim.$rep"
-      done
+    for rep in "$(seq 1 "${N_REPS}")"; do
+      results_dir="${results_base}/dim-${dim}/cpu-${ncpus}/rep-${rep}"
+      mkdir -p "${results_dir}"
 
-    elif [[ "${TARGET}" =~ .*"mpi".* ]]; then
-      mpirun -n "${ncpus}" "bin/${TARGET}" > "$results_dir/$TARGET.$dim.$rep"
-    fi
+      if [[ "${TARGET}" =~ .*"omp".* ]]; then
+        export OMP_NUM_THREADS="${ncpus}"
+        bin/"${TARGET}" > "${results_dir}/stdout"
+      elif [[ "${TARGET}" =~ .*"mpi".* ]]; then
+        mpirun -n "${ncpus}" "bin/${TARGET}" "${results_dir}" > "$results_dir/stdout"
+      fi
+    done
+
   done
-
 done
 
 
