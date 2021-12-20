@@ -284,10 +284,8 @@ int main(int argc, char **argv) {
   printf("%d %0.6lf\n", rank, t_end - t_start);
 #endif
 
-#ifdef POLYBENCH_DUMP_ARRAYS
   MPI_Gather(imgOutPriv, w * bh, MPI_DOUBLE, imgOut, 1, bh_cols_t, ROOT_RANK,
              MPI_COMM_WORLD);
-#endif
   if (rank == ROOT_RANK) {
     /* Prevent dead-code elimination. All live-out data must be printed
        by the function call in argument. */
