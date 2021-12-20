@@ -72,11 +72,10 @@ static void deriche_horizontal(long bw, long h, long bh,
                                DATA_TYPE *restrict y1, int size,
                                MPI_Datatype segment_block_t) {
 
-  DATA_TYPE xm1_0, ym1_0, ym2_0, ym1_1, ym2_1, ym1_2, ym2_2, ym1_3, ym2_3;
+  DATA_TYPE ym1, ym2;
   for (long i = 0; i < bw; i+=1) {
-    xm1_0 = SCALAR_VAL(0.0);
-    ym1_0 = SCALAR_VAL(0.0);
-    ym2_0 = SCALAR_VAL(0.0);
+    ym1 = SCALAR_VAL(0.0);
+    ym2 = SCALAR_VAL(0.0);
 
     DATA_TYPE y1t_0, y1t_1, y1t_2, y1t_3;
 
@@ -91,21 +90,21 @@ static void deriche_horizontal(long bw, long h, long bh,
     __m256d firstHalf_ = _mm256_fmadd_pd(a1_, xm1_X1, a2xmX2);
     _mm256_store_pd(firstHalf, firstHalf_);
 
-    y1t_0 = firstHalf[0] + b1 * ym1_0 + b2 * ym2_0;
-    ym2_1 = ym1_0;
-    ym1_1 = y1t_0;
+    y1t_0 = firstHalf[0] + b1 * ym1 + b2 * ym2;
+    ym2 = ym1;
+    ym1 = y1t_0;
 
-    y1t_1 = firstHalf[1] + b1 * ym1_1 + b2 * ym2_1;
-    ym2_2 = ym1_1;
-    ym1_2 = y1t_1;
+    y1t_1 = firstHalf[1] + b1 * ym1 + b2 * ym2;
+    ym2 = ym1;
+    ym1 = y1t_1;
 
-    y1t_2 = firstHalf[2] + b1 * ym1_2 + b2 * ym2_2;
-    ym2_3 = ym1_2;
-    ym1_3 = y1t_2;
+    y1t_2 = firstHalf[2] + b1 * ym1 + b2 * ym2;
+    ym2 = ym1;
+    ym1 = y1t_2;
 
-    y1t_3 = firstHalf[3] + b1 * ym1_3 + b2 * ym2_3;
-    ym2_0 = ym1_3;
-    ym1_0 = y1t_3;
+    y1t_3 = firstHalf[3] + b1 * ym1 + b2 * ym2;
+    ym2 = ym1;
+    ym1 = y1t_3;
 
     y1[idx_0]     = y1t_0;
     y1[idx_0 + 1] = y1t_1;
@@ -142,21 +141,21 @@ static void deriche_horizontal(long bw, long h, long bh,
       // ym2_0 = ym1_3;
       // ym1_0 = y1t_3;
       
-      y1t_0 = firstHalf[0] + b1 * ym1_0 + b2 * ym2_0;
-      ym2_1 = ym1_0;
-      ym1_1 = y1t_0;
+      y1t_0 = firstHalf[0] + b1 * ym1 + b2 * ym2;
+      ym2 = ym1;
+      ym1 = y1t_0;
 
-      y1t_1 = firstHalf[1] + b1 * ym1_1 + b2 * ym2_1;
-      ym2_2 = ym1_1;
-      ym1_2 = y1t_1;
+      y1t_1 = firstHalf[1] + b1 * ym1 + b2 * ym2;
+      ym2 = ym1;
+      ym1 = y1t_1;
 
-      y1t_2 = firstHalf[2] + b1 * ym1_2 + b2 * ym2_2;
-      ym2_3 = ym1_2;
-      ym1_3 = y1t_2;
+      y1t_2 = firstHalf[2] + b1 * ym1 + b2 * ym2;
+      ym2 = ym1;
+      ym1 = y1t_2;
 
-      y1t_3 = firstHalf[3] + b1 * ym1_3 + b2 * ym2_3;
-      ym2_0 = ym1_3;
-      ym1_0 = y1t_3;
+      y1t_3 = firstHalf[3] + b1 * ym1 + b2 * ym2;
+      ym2 = ym1;
+      ym1 = y1t_3;
 
       y1[idx_0]     = y1t_0;
       y1[idx_0 + 1] = y1t_1;
@@ -166,24 +165,96 @@ static void deriche_horizontal(long bw, long h, long bh,
   }
 
   DATA_TYPE yp1, yp2;
-  DATA_TYPE xp1, xp2;
-
   for (long i = 0; i < bw; i+=1) {
     yp1 = SCALAR_VAL(0.0);
     yp2 = SCALAR_VAL(0.0);
-    xp1 = SCALAR_VAL(0.0);
-    xp2 = SCALAR_VAL(0.0);
-    DATA_TYPE y2t;
+    DATA_TYPE y2t_0, y2t_1, y2t_2, y2t_3;
 
-    for (long j = h - 1; j >= 0; j-=1) {
+    // index h-1 to h-4
+    long idx = (i * h) + (h - 1);
+    DATA_TYPE *firstHalf = (DATA_TYPE*) malloc(4*sizeof(DATA_TYPE));
+
+    __m256d xp1_X1 = _mm256_set_pd(imgInPriv[idx-2], imgInPriv[idx-1], imgInPriv[idx], 0.0);
+    __m256d xp2_X2 = _mm256_set_pd(imgInPriv[idx-1], imgInPriv[idx], 0.0, 0.0);
+    __m256d intrmd1 = _mm256_mul_pd(a4_, xp2_X2);
+    __m256d firstHalf_ = _mm256_fmadd_pd(a3_, xp1_X1, intrmd1);
+    _mm256_store_pd(firstHalf, firstHalf_);
+
+    y2t_0 = firstHalf[0] + b1 * yp1 + b2 * yp2;
+    yp2 = yp1;
+    yp1 = y2t_0;
+
+    y2t_1 = firstHalf[1] + b1 * yp1 + b2 * yp2;
+    yp2 = yp1;
+    yp1 = y2t_1;
+
+    y2t_2 = firstHalf[2] + b1 * yp1 + b2 * yp2;
+    yp2 = yp1;
+    yp1 = y2t_2;
+
+    y2t_3 = firstHalf[3] + b1 * yp1 + b2 * yp2;
+    yp2 = yp1;
+    yp1 = y2t_3;
+
+    y1[idx]   = c1 * (y1[idx] + y2t_0);
+    y1[idx-1] = c1 * (y1[idx-1] + y2t_1);
+    y1[idx-2] = c1 * (y1[idx-2] + y2t_2);
+    y1[idx-3] = c1 * (y1[idx-3] + y2t_3);
+
+    // index h-5 to 0
+    for (long j = h - 5; j >= 0; j-=4) {
       long idx = (i * h) + j;
 
-      y2t = a3 * xp1 + a4 * xp2 + b1 * yp1 + b2 * yp2;
-      xp2 = xp1;
-      xp1 = imgInPriv[idx];
+      __m256d xp1_X1 = _mm256_set_pd(imgInPriv[idx-2], imgInPriv[idx-1], imgInPriv[idx], imgInPriv[idx+1]);
+      __m256d xp2_X2 = _mm256_set_pd(imgInPriv[idx-1], imgInPriv[idx], imgInPriv[idx+1], imgInPriv[idx+2]);
+      __m256d intrmd1 = _mm256_mul_pd(a4_, xp2_X2);
+      __m256d firstHalf_ = _mm256_fmadd_pd(a3_, xp1_X1, intrmd1);
+      _mm256_store_pd(firstHalf, firstHalf_);
+
+      // y2t_0 = a3 * xp1 + a4 * xp2 + b1 * yp1 + b2 * yp2;
+      // xp2 = xp1;
+      // xp1 = imgInPriv[idx];
+      // yp2 = yp1;
+      // yp1 = y2t_0;
+
+      // y2t_1 = a3 * xp1 + a4 * xp2 + b1 * yp1 + b2 * yp2;
+      // xp2 = xp1;
+      // xp1 = imgInPriv[idx-1];
+      // yp2 = yp1;
+      // yp1 = y2t_1;
+
+      // y2t_2 = a3 * xp1 + a4 * xp2 + b1 * yp1 + b2 * yp2;
+      // xp2 = xp1;
+      // xp1 = imgInPriv[idx-2];
+      // yp2 = yp1;
+      // yp1 = y2t_2;
+
+      // y2t_3 = a3 * xp1 + a4 * xp2 + b1 * yp1 + b2 * yp2;
+      // xp2 = xp1;
+      // xp1 = imgInPriv[idx-3];
+      // yp2 = yp1;
+      // yp1 = y2t_3;
+
+      y2t_0 = firstHalf[0] + b1 * yp1 + b2 * yp2;
       yp2 = yp1;
-      yp1 = y2t;
-      y1[idx] = c1 * (y1[idx] + y2t);
+      yp1 = y2t_0;
+
+      y2t_1 = firstHalf[1] + b1 * yp1 + b2 * yp2;
+      yp2 = yp1;
+      yp1 = y2t_1;
+
+      y2t_2 = firstHalf[2] + b1 * yp1 + b2 * yp2;
+      yp2 = yp1;
+      yp1 = y2t_2;
+
+      y2t_3 = firstHalf[3] + b1 * yp1 + b2 * yp2;
+      yp2 = yp1;
+      yp1 = y2t_3;
+
+      y1[idx]   = c1 * (y1[idx] + y2t_0);
+      y1[idx-1] = c1 * (y1[idx-1] + y2t_1);
+      y1[idx-2] = c1 * (y1[idx-2] + y2t_2);
+      y1[idx-3] = c1 * (y1[idx-3] + y2t_3);
     }
 
     // Every SW rows (i.e. when one segment is complete) send it to processors
