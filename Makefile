@@ -14,9 +14,8 @@ BINARY_HEAT3D_MPI=${BIN_DIR}/heat-3d_mpi
 OUTPUT_DERICHE=deriche_${SIZE}_out.txt
 
 DERICHE_DIM=
-DERICHE_FLAGS=
 ifdef DERICHE_DIM
-	DERICHE_FLAGS := ${DERICHE_FLAGS} -DW=${DERICHE_DIM} -DH=${DERICHE_DIM}
+	EXTRA_FLAGS := ${EXTRA_FLAGS} -DW=${DERICHE_DIM} -DH=${DERICHE_DIM}
 endif
 
 $(shell mkdir -p bin)
@@ -35,22 +34,22 @@ all: deriche_omp deriche deriche_ref deriche_mpi_baseline deriche_mpi_rdma seide
 .PHONY: clean run
 
 deriche_omp:
-	${CC} ${CFLAGS} ${EXTRA_FLAGS} ${DERICHE_FLAGS} -fopenmp -o ${BINARY_DERICHE_OMP} ${SRC_DIR}/deriche/deriche_omp.c 
+	${CC} ${CFLAGS} ${EXTRA_FLAGS} -fopenmp -o ${BINARY_DERICHE_OMP} ${SRC_DIR}/deriche/deriche_omp.c 
 
 deriche:
 	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -Wno-unused-parameter -DNDEBUG -o ${BINARY_DERICHE} ${SRC_DIR}/deriche/deriche_mpi_r.c
 
 deriche_ref:
-	${CC} ${CFLAGS} ${EXTRA_FLAGS} ${DERICHE_FLAGS} -o ${BIN_DIR}/deriche_ref polybench/medley/deriche/deriche.c
+	${CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BIN_DIR}/deriche_ref polybench/medley/deriche/deriche.c
 
 deriche_mpi_baseline:
-	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} ${DERICHE_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c
+	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c
 
 deriche_mpi_rdma:
-	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} ${DERICHE_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c
+	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c
 
 deriche_mpi_roberto:
-	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} ${DERICHE_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c -DPOLYBENCH_DUMP_ARRAYS
+	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c -DPOLYBENCH_DUMP_ARRAYS
 	mpiexec -np 2 ${BIN_DIR}/$@ > ${OUTPUT_DERICHE} 2>&1
 	diff ${OUTPUT_DERICHE} ${TEST_DIR}/deriche/deriche_${SIZE}_DATASET.out -s
 
