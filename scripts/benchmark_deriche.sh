@@ -50,7 +50,7 @@ function benchmark() {
           export OMP_NUM_THREADS="${ncpus}"
           bin/"${TARGET}" > "${results_dir}/stdout"
         elif [[ "${TARGET}" =~ .*"mpi".* ]]; then
-          mpirun -n "${ncpus}" "bin/${TARGET}" "${results_dir}" > "$results_dir/stdout"
+          mpirun -n "${ncpus}" "bin/${TARGET}" "${results_dir}" > "$results_dir/stdout" 2>&1
         fi
       done
     done
@@ -67,7 +67,7 @@ function benchmark_segments() {
 
           for ncpus in {1,2,4,8,16,32}; do
             for rep in $(seq 1 $N_REPS); do
-              results_dir=$results_base/dim_$dim/cpu_$ncpus/rep_$rep
+              results_dir=$results_base/sw_$sw/dim_$dim/cpu_$ncpus/rep_$rep
               mkdir -p $results_dir
               mpirun -n $ncpus bin/$TARGET $results_dir > $results_dir/stdout 2>&1
             done
@@ -78,7 +78,7 @@ function benchmark_segments() {
 
 if [[ $TARGET == deriche_ref ]]; then
   benchmark_ref
-elif [[ $TARGET == deriche_mpi_segments ]]; then
+elif [[ $TARGET == deriche_mpi_segments || $TARGET == deriche_mpi_rdma ]]; then
   benchmark_segments
 else
   benchmark
