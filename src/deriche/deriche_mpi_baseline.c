@@ -245,15 +245,16 @@ int main(int argc, char **argv) {
   bm_stop(&benchmark_exclusive_compute);
   bm_stop(&benchmark_iter);
 
-  MPI_Gather(imgOutPriv, w * bh, MPI_DOUBLE, imgOut, 1, bh_cols_t, ROOT_RANK,
-             MPI_COMM_WORLD);
+  // MPI_Gather(imgOutPriv, w * bh, MPI_DOUBLE, imgOut, 1, bh_cols_t, ROOT_RANK,
+  // MPI_COMM_WORLD);
   if (rank == ROOT_RANK) {
     printf("%0.6lf\n", t_end - t_start);
     /* Prevent dead-code elimination. All live-out data must be printed
        by the function call in argument. */
-    polybench_prevent_dce(print_array(w, h, imgOut));
+    /* polybench_prevent_dce(print_array(w, h, imgOut)); */
   }
 
+  polybench_prevent_dce(print_array(w, bh, imgOutPriv));
   // Dump benchmarks
   if (benchmark_path != NULL) {
     char bm_output_name[512];
