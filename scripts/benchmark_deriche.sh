@@ -27,7 +27,7 @@ for dim in "${DERICHE_DIMS[@]}"; do
 
   for ncpus in {1,2,4,8,16,32}; do
 
-    for rep in "$(seq 1 "${N_REPS}")"; do
+    for rep in $(seq 1 "${N_REPS}"); do
       results_dir="${results_base}/dim-${dim}/cpu-${ncpus}/rep-${rep}"
       mkdir -p "${results_dir}"
 
