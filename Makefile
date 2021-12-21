@@ -34,7 +34,7 @@ all: deriche_omp deriche deriche_ref deriche_mpi_baseline deriche_mpi_rdma seide
 .PHONY: clean run
 
 deriche_omp:
-	${CC} ${CFLAGS} ${EXTRA_FLAGS} -fopenmp -o ${BINARY_DERICHE_OMP} ${SRC_DIR}/deriche/deriche_omp.c 
+	${CC} ${CFLAGS} ${EXTRA_FLAGS} -fopenmp -o ${BINARY_DERICHE_OMP} ${SRC_DIR}/deriche/deriche_omp.c
 
 deriche:
 	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -Wno-unused-parameter -DNDEBUG -o ${BINARY_DERICHE} ${SRC_DIR}/deriche/deriche_mpi_r.c
@@ -48,10 +48,12 @@ deriche_mpi_baseline:
 deriche_mpi_rdma:
 	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c
 
-deriche_mpi_roberto2:
-	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c -DPOLYBENCH_DUMP_ARRAYS
-	mpiexec -np 2 ${BIN_DIR}/$@ > ${OUTPUT_DERICHE} 2>&1
-	diff ${OUTPUT_DERICHE} ${TEST_DIR}/deriche/deriche_${SIZE}_DATASET.out -s
+deriche_mpi_segments:
+	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c
+	# for verification:
+	# ${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c -DPOLYBENCH_DUMP_ARRAYS -DNO_BENCHMARK
+	# mpiexec -np 2 ${BIN_DIR}/$@ > ${OUTPUT_DERICHE} 2>&1
+	# diff ${OUTPUT_DERICHE} ${TEST_DIR}/deriche/deriche_${SIZE}_DATASET.out -s
 
 deriche_mpi_avx:
 	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS}  -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c -DPOLYBENCH_DUMP_ARRAYS
