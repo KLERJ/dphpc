@@ -9,3 +9,4 @@ pwd
 bsub -R "model=XeonE3_1585Lv5 rusage[mem=4000]" -W 4:00 -J "deriche-ref" -n 32 ./benchmark_deriche.sh 5 deriche_mpi_rdma
 bsub -R "model=XeonE3_1585Lv5 rusage[mem=4000]" -W 4:00 -J "deriche-ref" -n 32 ./benchmark_deriche.sh 5 deriche_mpi_segments
 bsub -R "model=XeonE3_1585Lv5 rusage[mem=4000]" -W 4:00 -J "deriche-ref" -n 32 ./benchmark_deriche.sh 5 deriche_mpi_baseline
+bsub -R "model=XeonE3_1585Lv5 rusage[mem=4000]" -W 4:00 -J "deriche-ref" -n 1 ./benchmark_deriche.sh 5 deriche_ref

@@ -18,6 +18,10 @@ ifdef DERICHE_DIM
 	EXTRA_FLAGS := ${EXTRA_FLAGS} -DW=${DERICHE_DIM} -DH=${DERICHE_DIM}
 endif
 
+ifdef SEG_WIDTH
+	EXTRA_FLAGS := ${EXTRA_FLAGS} -DSW=${SEG_WIDTH}
+endif
+
 $(shell mkdir -p bin)
 UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
