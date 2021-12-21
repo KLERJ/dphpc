@@ -180,11 +180,10 @@ static void deriche_horizontal(long bw, long h, long bh,
     __m256d firstHalf_ = _mm256_fmadd_pd(a3_, xp1_X1, intrmd1);
     _mm256_store_pd(firstHalf, firstHalf_);
 
-    y2t_0 = firstHalf[0] + b1 * yp1 + b2 * yp2;
-    yp2 = yp1;
-    yp1 = y2t_0;
+    y2t_0 = firstHalf[0];
+    yp1 = y2t_0 * b1;
 
-    y2t_1 = firstHalf[1] + b1 * yp1 + b2 * yp2;
+    y2t_1 = firstHalf[1] + yp1;
     yp2 = yp1;
     yp1 = y2t_1;
 
@@ -295,17 +294,79 @@ static void deriche_vertical(long w, long bh, DATA_TYPE *restrict imgOutPriv,
     tm1 = SCALAR_VAL(0.0);
     ym1 = SCALAR_VAL(0.0);
     ym2 = SCALAR_VAL(0.0);
-    DATA_TYPE y1t;
-    for (long i = 0; i < w; i++) {
+
+    DATA_TYPE y1t_0, y1t_1, y1t_2, y1t_3;
+
+    long idx_0 = j;
+    long idx_1 = bh + j;
+    long idx_2 = (2 * bh) + j;
+    long idx_3 = (3 * bh) + j;
+    DATA_TYPE *firstHalf = (DATA_TYPE*) malloc(4*sizeof(DATA_TYPE));
+
+    __m256d imgX0 = _mm256_set_pd(imgOutPriv[idx_3], imgOutPriv[idx_2], imgOutPriv[idx_1], imgOutPriv[idx_0]);
+    __m256d imgX1 = _mm256_set_pd(imgOutPriv[idx_2], imgOutPriv[idx_1], imgOutPriv[idx_0], 0.0);
+    __m256d intrmd1 = _mm256_mul_pd(a6_, imgX1);
+    __m256d firstHalf_ = _mm256_fmadd_pd(a5_, imgX0, intrmd1);
+    _mm256_store_pd(firstHalf, firstHalf_);
+
+    y1t_0 = firstHalf[0] + b1 * ym1 + b2 * ym2;
+    ym2 = ym1;
+    ym1 = y1t_0;
+
+    y1t_1 = firstHalf[1] + b1 * ym1 + b2 * ym2;
+    ym2 = ym1;
+    ym1 = y1t_1;
+
+    y1t_2 = firstHalf[2] + b1 * ym1 + b2 * ym2;
+    ym2 = ym1;
+    ym1 = y1t_2;
+
+    y1t_3 = firstHalf[3] + b1 * ym1 + b2 * ym2;
+    ym2 = ym1;
+    ym1 = y1t_3;
+
+    y2[idx_0] = y1t_0;
+    y2[idx_1] = y1t_1;
+    y2[idx_2] = y1t_2;
+    y2[idx_3] = y1t_3;
+
+    for (long i = 4; i < w; i+=4) {
       // Every SW rows, we need to make sure that the data we need is ready
       if (i % SW == 0) {
         MPI_Wait(requests + (i / SW), MPI_STATUS_IGNORE);
       }
-      y1t = a5 * imgOutPriv[ind(i, j, bh)] + a6 * tm1 + b1 * ym1 + b2 * ym2;
-      tm1 = imgOutPriv[ind(i, j, bh)];
+
+      long idx_0 = (i * bh) + j;
+      long idx_1 = ((i+1) * bh) + j;
+      long idx_2 = ((i+2) * bh) + j;
+      long idx_3 = ((i+3) * bh) + j;
+
+      __m256d imgX0 = _mm256_set_pd(imgOutPriv[idx_3], imgOutPriv[idx_2], imgOutPriv[idx_1], imgOutPriv[idx_0]);
+      __m256d imgX1 = _mm256_set_pd(imgOutPriv[idx_2], imgOutPriv[idx_1], imgOutPriv[idx_0], imgOutPriv[((i-1) * bh) + j]);
+      __m256d intrmd1 = _mm256_mul_pd(a6_, imgX1);
+      __m256d firstHalf_ = _mm256_fmadd_pd(a5_, imgX0, intrmd1);
+      _mm256_store_pd(firstHalf, firstHalf_);
+
+      y1t_0 = firstHalf[0] + b1 * ym1 + b2 * ym2;
       ym2 = ym1;
-      ym1 = y1t;
-      y2[ind(i, j, bh)] = y1t;
+      ym1 = y1t_0;
+
+      y1t_1 = firstHalf[1] + b1 * ym1 + b2 * ym2;
+      ym2 = ym1;
+      ym1 = y1t_1;
+
+      y1t_2 = firstHalf[2] + b1 * ym1 + b2 * ym2;
+      ym2 = ym1;
+      ym1 = y1t_2;
+
+      y1t_3 = firstHalf[3] + b1 * ym1 + b2 * ym2;
+      ym2 = ym1;
+      ym1 = y1t_3;
+
+      y2[idx_0] = y1t_0;
+      y2[idx_1] = y1t_1;
+      y2[idx_2] = y1t_2;
+      y2[idx_3] = y1t_3;
     }
   }
 
