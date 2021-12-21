@@ -20,6 +20,7 @@
 #include <polybench.h>
 
 /* Include benchmark-specific header. */
+#include "bm.h"
 #include "deriche.h"
 
 #define ROOT_RANK 0
@@ -28,6 +29,12 @@
 DATA_TYPE k;
 DATA_TYPE a1, a2, a3, a4, a5, a6, a7, a8;
 DATA_TYPE b1, b2, c1, c2;
+
+// Benchmark handles
+bm_handle benchmark_exclusive_compute;
+bm_handle benchmark_overlap_compute;
+bm_handle benchmark_communication;
+bm_handle benchmark_iter;
 
 /* Array initialization. */
 static void init_array_private(long bw, long h, int rank, DATA_TYPE *imgIn) {
@@ -160,6 +167,16 @@ int main(int argc, char **argv) {
   long bw = w / size;
   long bh = h / size;
 
+  // Benchmark initialization
+  char *benchmark_path = NULL;
+  if (argc == 2) {
+    benchmark_path = argv[1];
+  }
+  bm_init(&benchmark_exclusive_compute, 1);
+  bm_init(&benchmark_overlap_compute, 1);
+  bm_init(&benchmark_communication, 1);
+  bm_init(&benchmark_iter, 1);
+
   MPI_Datatype _block_t;
   MPI_Type_vector(bw, bh, h, MPI_DOUBLE, &_block_t);
   MPI_Type_commit(&_block_t);
@@ -193,6 +210,10 @@ int main(int argc, char **argv) {
   /* Start timer. */
   // polybench_start_instruments;
   double t_start = MPI_Wtime();
+  bm_start(&benchmark_iter);
+  bm_start(&benchmark_exclusive_compute);
+  bm_start(&benchmark_overlap_compute);
+  bm_stop(&benchmark_overlap_compute);
 
   k = (SCALAR_VAL(1.0) - EXP_FUN(-alpha)) *
       (SCALAR_VAL(1.0) - EXP_FUN(-alpha)) /
@@ -208,13 +229,21 @@ int main(int argc, char **argv) {
 
   /* Run kernel. */
   deriche_horizontal(bw, h, imgInPriv, y1);
+
+  bm_pause(&benchmark_exclusive_compute);
+  bm_start(&benchmark_communication);
   MPI_Alltoall(y1, 1, block_t, imgOutPriv, bw * bh, MPI_DOUBLE, MPI_COMM_WORLD);
+  bm_stop(&benchmark_communication);
+  bm_resume(&benchmark_exclusive_compute);
+
   deriche_vertical(w, bh, imgOutPriv, y2);
 
   /* Stop and print timer. */
   // polybench_stop_instruments;
   // polybench_print_instruments;
   double t_end = MPI_Wtime();
+  bm_stop(&benchmark_exclusive_compute);
+  bm_stop(&benchmark_iter);
 
   MPI_Gather(imgOutPriv, w * bh, MPI_DOUBLE, imgOut, 1, bh_cols_t, ROOT_RANK,
              MPI_COMM_WORLD);
@@ -225,7 +254,28 @@ int main(int argc, char **argv) {
     polybench_prevent_dce(print_array(w, h, imgOut));
   }
 
+  // Dump benchmarks
+  if (benchmark_path != NULL) {
+    char bm_output_name[512];
+    snprintf(bm_output_name, 512, "%s/benchmark_%d.csv", benchmark_path, rank);
+    FILE *benchmark_dump = fopen(bm_output_name, "w");
+    if (benchmark_dump == NULL) {
+      fprintf(stderr, "Couldn't open file\n");
+    }
+
+    bm_print_events(&benchmark_communication, benchmark_dump);
+    bm_print_events(&benchmark_overlap_compute, benchmark_dump);
+    bm_print_events(&benchmark_exclusive_compute, benchmark_dump);
+    bm_print_events(&benchmark_iter, benchmark_dump);
+    fclose(benchmark_dump);
+  }
+
   /* Be clean. */
+  bm_destroy(&benchmark_communication);
+  bm_destroy(&benchmark_overlap_compute);
+  bm_destroy(&benchmark_exclusive_compute);
+  bm_destroy(&benchmark_iter);
+
   free(imgOut);
   free(imgInPriv);
   free(imgOutPriv);

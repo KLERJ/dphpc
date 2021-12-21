@@ -280,7 +280,7 @@ int main(int argc, char **argv) {
   alpha = 0.25; // parameter of the filter
 
   /* Start timer. */
-  /* double t_start = MPI_Wtime(); */
+  double t_start = MPI_Wtime();
   bm_start(&benchmark_iter);
   bm_start(&benchmark_exclusive_compute);
 
@@ -328,7 +328,7 @@ int main(int argc, char **argv) {
   bm_stop(&benchmark_iter);
 
   /* Stop and print timer. */
-  /* double t_end = MPI_Wtime(); */
+  double t_end = MPI_Wtime();
   /* #ifndef POLYBENCH_DUMP_ARRAYS */
   /* printf("%d %0.6lf\n", rank, t_end - t_start); */
   /* #endif */
@@ -336,6 +336,7 @@ int main(int argc, char **argv) {
   MPI_Gather(imgOutPriv, w * bh, MPI_DOUBLE, imgOut, 1, bh_cols_t, ROOT_RANK,
              MPI_COMM_WORLD);
   if (rank == ROOT_RANK) {
+    printf("%0.6lf\n", t_end - t_start);
     /* Prevent dead-code elimination. All live-out data must be printed
        by the function call in argument. */
     polybench_prevent_dce(print_array(w, h, imgOut));
@@ -358,16 +359,16 @@ int main(int argc, char **argv) {
   }
 
   /* Be clean. */
-  /* bm_destroy(&benchmark_communication); */
-  /* bm_destroy(&benchmark_overlap_compute); */
-  /* bm_destroy(&benchmark_exclusive_compute); */
-  /* bm_destroy(&benchmark_iter); */
+  bm_destroy(&benchmark_communication);
+  bm_destroy(&benchmark_overlap_compute);
+  bm_destroy(&benchmark_exclusive_compute);
+  bm_destroy(&benchmark_iter);
 
-  /* free(imgOut); */
-  /* free(imgOutPriv); */
-  /* free(imgInPriv); */
-  /* free(y1); */
-  /* free(y2); */
+  free(imgOut);
+  free(imgOutPriv);
+  free(imgInPriv);
+  free(y1);
+  free(y2);
   MPI_Type_free(&segment_block_t);
   MPI_Type_free(&_segment_block_t);
   MPI_Type_free(&bh_cols_t);
