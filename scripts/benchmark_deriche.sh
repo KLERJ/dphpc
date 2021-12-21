@@ -8,6 +8,9 @@ fi
 N_REPS=$1
 TARGET=$2
 
+env2lmod
+module load gcc/8.2.0 openmpi/4.0.2
+
 # DATASETS=('MINI' 'SMALL' 'MEDIUM' 'LARGE' 'EXTRALARGE')
 DERICHE_DIMS=(10 11 12 13 14 15 16)
 
