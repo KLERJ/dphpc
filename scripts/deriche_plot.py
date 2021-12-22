@@ -45,9 +45,9 @@ def read_results_default(root_dir_path):
                     file = open(bm_file_path, 'r')
                     for line in file:
                         bm_file_res.append(float(line))
-                    bm_results.append(bm_file_res)
+                    bm_results.append(max(bm_file_res))
                 # Add results of this rep to results of this cpu number
-                cpu_results[rep] = bm_results
+                cpu_results[rep] = max(bm_results)
             # Add results of this number of cpu to results of this dim
             dim_results[cpus] = cpu_results
         results[dim] = dim_results
@@ -80,9 +80,9 @@ def read_results_segments(root_dir_path):
                         file = open(bm_file_path, 'r')
                         for line in file:
                             bm_file_res.append(float(line))
-                        bm_results.append(bm_file_res)
+                        bm_results.append(max(bm_file_res))
                     # Add results of this rep to results of this cpu number
-                    cpu_results[rep] = bm_results
+                    cpu_results[rep] = max(bm_results)
                 # Add results of this number of cpu to results of this dim
                 dim_results[cpus] = cpu_results
             sw_results[dim] = dim_results
@@ -110,26 +110,37 @@ def read_results_ref(root_dir_path):
             # Add results of this rep to results of this dim
             print(bm_file_path)
             print(bm_results)
-            dim_results[rep] = bm_results
+            dim_results[rep] = bm_results[0]
         results[dim] = dim_results
     return results
 
 FILENAME = args.target + "_plot"
 # Extract data from files in results dir
 root_dir_path = args.results_path + '/' + args.target
+# whether the results contains a 'SW' parameter or not
+is_segmented = (args.target == 'deriche_mpi_segments') | (args.target == 'deriche_mpi_')
+is_mpi = is_segmented | (args.target == 'deriche_mpi_baseline')
+is_ref = (args.target == 'deriche_ref')
+
 results = {}
-if (args.target == 'deriche_mpi_segments') | (args.target == 'deriche_mpi_'):
+if is_segmented:
     results = read_results_segments(root_dir_path)
-elif args.target == 'deriche_mpi_baseline':
+elif is_mpi:
     results = read_results_default(root_dir_path)
-elif args.target == 'deriche_ref':
+elif is_ref:
     results = read_results_ref(root_dir_path)
 else:
     print("Invalid target parameter")
     exit(-1)
 
-print(results)
+# Compute arithmetic mean and variance, speedup compared to baseline
 
+dim_10_baseline = read_results_ref(root_dir_path)[10]
+dim_10_results = {}
+if is_segmented:
+    dim_10_results = results[16][10]
+else:
+    dim_10_results = results[10]
 
 
 procs = ['1', '2', '4', '8', '16', '32']
