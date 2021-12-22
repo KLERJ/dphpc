@@ -63,7 +63,8 @@ deriche_mpi_segments:
 
 deriche_mpi_avx:
 	${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c
-	# ${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS}  -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c -DPOLYBENCH_DUMP_ARRAYS
+	# for verification:
+	# ${MPI_CC} ${CFLAGS} ${EXTRA_FLAGS} -o ${BIN_DIR}/$@ ${SRC_DIR}/deriche/$@.c -DPOLYBENCH_DUMP_ARRAYS
 	# mpiexec -np 2 ${BIN_DIR}/$@ > ${OUTPUT_DERICHE} 2>&1
 	# diff ${OUTPUT_DERICHE} ${TEST_DIR}/deriche/deriche_${SIZE}_DATASET.out -s
 
