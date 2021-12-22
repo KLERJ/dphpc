@@ -8,8 +8,8 @@ import numpy as np
 
 ########### GRAPH PROPERTIES ############
 
-TITLE = 'Runtime deriche. LARGE dataset. Apple M1 Pro, avg. of 10 runs'
-Y_LABEL = 'Runtime [seconds]'
+TITLE = 'Speedup - Strong Scaling - WxH = $2^{10}$x$2^{10}$ , AMD EPYC 7H12, arithmetic mean of 25 runs'
+Y_LABEL = 'Speedup'
 X_LABEL = '# cores'
 FILENAME = 'test'
 AXIS_LABEL_COLOR = (.4, .4, .4)
@@ -182,33 +182,24 @@ def efficiency_speedup_for_dim(dim, results_path, target):
 
     return speedup, efficiency
 
-
-FILENAME = "plot"
-
-
-
 speedup_baseline, efficiency_baseline = efficiency_speedup_for_dim(11, args.results_path, 'deriche_mpi_baseline')
 print(speedup_baseline, efficiency_baseline)
 
 procs = ['1', '2', '4', '8', '16', '32']
-reference_impl = [0.1356376 for i in range(len(procs))]
-baseline = [0.21723179999999997, 0.09163249999999999, 0.0488108, 0.033523599999999994]
-rdma = [0.2195272, 0.0859053, 0.044615699999999994, 0.0324671]
-data = [reference_impl, baseline, rdma]
 
 #########################################
 
 procs = [int(x) for x in procs]
-line_styles = ['bo-', 'ro-', 'go-', 'yo-', 'mo-']
+line_styles = ['b.-', 'ro-', 'go-', 'yo-', 'mo-']
 
 fig, ax = plt.subplots()
-for i in range(len(data)):
-    plt.plot(procs, data[i], line_styles[i])
+plt.plot(procs, speedup_baseline, line_styles[0], label='MPI Alltoall')
 
 # line labels
-plt.text(x=5, y=0.14, s='ref impl', color='blue')
-plt.text(x=5, y=0.05, s='MPI baseline', color='red')
-plt.text(x=3, y=0.03, s='MPI RDMA', color='green')
+ax.legend() # less work for now lol
+# plt.text(x=5, y=0.14, s='ref impl', color='blue')
+# plt.text(x=5, y=0.05, s='MPI baseline', color='blue')
+# plt.text(x=3, y=0.03, s='MPI RDMA', color='green')
 
 # axes
 # plt.ylim(0.025, 0.25)
@@ -216,7 +207,7 @@ plt.text(x=3, y=0.03, s='MPI RDMA', color='green')
 # plt.yticks(np.arange(0, 2.76, .25))
 
 # title, axes labels
-plt.title(TITLE, y=1.07, loc='left', x=-0.1)
+plt.title(TITLE, y=1.07, size=12)
 plt.ylabel(' ' + Y_LABEL, rotation=0, horizontalalignment='left', y=1.02, color=AXIS_LABEL_COLOR)
 plt.xlabel(X_LABEL, color=AXIS_LABEL_COLOR)
 
@@ -224,8 +215,10 @@ plt.xlabel(X_LABEL, color=AXIS_LABEL_COLOR)
 plt.tick_params(axis='y', which='both', left=False, right=False)
 
 # horizontal lines, background
-plt.grid(axis='y', color=HORIZONTAL_LINES_COLOR)
-ax.set_facecolor(BACKGROUND_COLOR)
+ax.set_facecolor('#eeeeee')
+ax.yaxis.grid(color='#fafafa', linewidth=1.0)
+ax.yaxis.grid(True)
+ax.xaxis.grid(True)
 
 # hide box, add digit separator
 ax.spines['top'].set_visible(False)
@@ -235,4 +228,5 @@ ax.get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: 
 
 # save
 # plt.savefig(FILENAME + '.svg')
+plt.show()
 plt.savefig(FILENAME + '.png', dpi=300)
