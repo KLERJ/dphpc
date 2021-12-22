@@ -19,7 +19,6 @@ HORIZONTAL_LINES_COLOR = (1, 1, 1)
 # ARGUMENTS
 parser = argparse.ArgumentParser()
 parser.add_argument('results_path', help='root directory of the benchmark results')
-parser.add_argument('target', help='target version')
 args = parser.parse_args()
 
 targets = ['deriche_mpi_baseline', 'deriche_mpi_rdma', 'deriche_mpi_segments']
@@ -142,48 +141,54 @@ def read_results_ref(root_dir_path):
         results[dim] = dim_results
     return results
 
-FILENAME = args.target + "_plot"
-# Extract data from files in results dir
-root_dir_path = args.results_path + '/' + args.target
-# whether the results contains a 'SW' parameter or not
-is_segmented = (args.target == 'deriche_mpi_segments') | (args.target == 'deriche_mpi_')
-is_mpi = is_segmented | (args.target == 'deriche_mpi_baseline')
-is_ref = (args.target == 'deriche_ref')
+def efficiency_speedup_for_dim(dim, results_path, target):
 
-results = {}
-if is_segmented:
-    results = read_results_segments(root_dir_path)
-elif is_mpi:
-    results = read_results_default(root_dir_path)
-elif is_ref:
-    results = read_results_ref(root_dir_path)
-else:
-    print("Invalid target parameter")
-    exit(-1)
+    baseline_root_path = os.path.join(args.results_path, 'deriche_ref')
+    baseline = read_results_ref(baseline_root_path)[dim]
+    dim_baseline_reps = np.array([rep for rep in baseline.values()])
+    dim_baseline_mean = np.mean(dim_baseline_reps)
+    dim_baseline_var = np.var(dim_baseline_reps)
 
-# Compute arithmetic mean and variance, speedup compared to baseline
-print(results)
 
-baseline_root_path = os.path.join(args.results_path, 'deriche_ref')
-dim = 11
-dim_baseline = read_results_ref(baseline_root_path)[dim]
-dim_results = {}
-if is_segmented:
-    dim_results = results[16][dim]
-else:
-    dim_results = results[dim]
+    root_dir_path = results_path + '/' + target
+    # whether the results contains a 'SW' parameter or not
+    is_segmented = (target == 'deriche_mpi_segments') | (target == 'deriche_mpi_')
+    is_mpi = is_segmented | (target == 'deriche_mpi_baseline')
 
-n_cpus = [1, 2, 4, 8, 16, 32]
-dim_cpus_reps = np.array([[i for i in dim_results[cpu].values()] for cpu in n_cpus])
-dim_cpus_mean = np.array([ np.mean(reps) for reps in dim_cpus_reps ])
-dim_cpus_var = np.array([ np.var(reps) for reps in dim_cpus_reps ])
+    results = {}
+    if is_segmented:
+        results = read_results_segments(root_dir_path)
+    elif is_mpi:
+        results = read_results_default(root_dir_path)
+    else:
+        print("Invalid target parameter")
+        exit(-1)
 
-dim_baseline_reps = np.array([rep for rep in dim_baseline.values()])
-dim_baseline_mean = np.mean(dim_baseline_reps)
-dim_baseline_var = np.var(dim_baseline_reps)
+    dim_results = {}
+    if is_segmented:
+        dim_results = results[16][dim]
+    else:
+        dim_results = results[dim]
 
-speedup = np.array([ dim_baseline_mean / runtime for runtime in dim_cpus_mean])
-efficiency = np.array([ s / cpus for (s, cpus) in zip(speedup, n_cpus)])
+
+    # Compute arithmetic mean and variance, speedup compared to baseline, efficiency
+    n_cpus = [1, 2, 4, 8, 16, 32]
+    dim_cpus_reps = np.array([[i for i in dim_results[cpu].values()] for cpu in n_cpus])
+    dim_cpus_mean = np.array([ np.mean(reps) for reps in dim_cpus_reps ])
+    dim_cpus_var = np.array([ np.var(reps) for reps in dim_cpus_reps ])
+
+    speedup = np.array([ dim_baseline_mean / runtime for runtime in dim_cpus_mean])
+    efficiency = np.array([ s / cpus for (s, cpus) in zip(speedup, n_cpus)])
+
+    return speedup, efficiency
+
+
+FILENAME = "plot"
+
+
+
+speedup_baseline, efficiency_baseline = efficiency_speedup_for_dim(11, args.results_path, 'deriche_mpi_baseline')
+print(speedup_baseline, efficiency_baseline)
 
 procs = ['1', '2', '4', '8', '16', '32']
 reference_impl = [0.1356376 for i in range(len(procs))]
