@@ -1,0 +1,65 @@
+#!/bin/bash
+
+. /cluster/apps/local/env2lmod.sh
+
+
+USE_SCOREP=${1:-false}
+
+DN=${2:-1024}  		   # Problem Size
+DSTEPS=${3:-250}        # Number of Steps
+
+if [ "$USE_SCOREP" = "true" ]; then
+	echo "Using Score-P with GCC 6.3.0 and OpenMPI 3.0.1"
+	module load gcc/6.3.0  openmpi/3.0.1 scorep/3.1
+	USE_SCOREP="true"
+    SCORE_P="_scorep"
+
+else
+	echo "Using GCC 9.3.0 and OpenMPI 4.0.2"
+	module load gcc/9.3.0  openmpi/4.0.2
+	USE_SCOREP="false"
+    SCORE_P=""
+fi
+
+
+TIME=04:00
+#CPU_MODEL=XeonE3_1585Lv5 # Euler III 4860 instances 
+#CPU_MODEL=XeonGold_6150 # Euler IV 10368 instances
+#CPU_MODEL=XeonGold_5118 # Euler V 8448 instances
+#CPU_MODEL=EPYC_7742 # Euler VI 27648 instances
+CPU_MODEL=EPYC_7H12 # Euler VII 37376 instances
+
+USER_EMAIL=jmandula@student.ethz.ch
+
+RUN_ID=$(date +%Y_%m_%d_%H%M%S)
+SUB_DIR="heat_bm"
+TARGET=$(printf "heat-3d_%d_%dx" $DN $DSTEPS)
+
+
+
+RUN_DIR=$(printf "%s/%s/%s_%s%s" $SCRATCH $SUB_DIR $RUN_ID $TARGET $SCORE_P)
+
+
+
+
+N_THREADS=256
+N_MEM=4096
+
+
+printf "Submitting Job %s with %d threads %dMB RAM on %s\n" $TARGET $N_THREADS $N_MEM $CPU_MODEL
+printf "Run Directory: %s\n" $RUN_DIR
+printf "  3\r"
+sleep 1
+printf "  2\r"
+sleep 1
+printf "  1\r"
+sleep 1
+
+
+
+mkdir -p $RUN_DIR
+
+
+
+bsub -W $TIME -n $N_THREADS -R "rusage[mem=$N_MEM]" -R "model=$CPU_MODEL" -J "$TARGET" -u "$USER_EMAIL" -oo $RUN_DIR/output.txt -eo $RUN_DIR/error.txt "./heat_benchmark.sh $RUN_DIR $USE_SCOREP $DN $DSTEPS"
+
