@@ -90,6 +90,31 @@ def read_results_segments(root_dir_path):
 
     return results
 
+def read_results_omp(root_dir_path):
+    results = {}
+    for dim_dir in os.listdir(root_dir_path):
+        dim_dir_path = os.path.join(root_dir_path, dim_dir)
+        dim = int(dim_dir.split('_')[1])
+        dim_results = {}
+        for cpu_dir in os.listdir(dim_dir_path):
+            cpu_dir_path = os.path.join(dim_dir_path, cpu_dir)
+            cpus = int(cpu_dir.split('_')[1])
+            cpu_results = {}
+            for rep_dir in os.listdir(cpu_dir_path):
+                rep_dir_path = os.path.join(cpu_dir_path, rep_dir)
+                rep = int(rep_dir.split('_')[1])
+                bm_results = []
+                bm_file_path = os.path.join(rep_dir_path, 'stdout')
+                # Read file into list, append list to bm_results
+                file = open(bm_file_path, 'r')
+                for line in file:
+                    bm_results.append(float(line))
+                # Add results of this rep to results of this cpu number
+                cpu_results[rep] = bm_results
+            # Add results of this number of cpu to results of this dim
+            dim_results[cpus] = cpu_results
+        results[dim] = dim_results
+    return results
 
 def read_results_ref(root_dir_path):
     results = {}
