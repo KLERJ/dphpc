@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+# set -e
 
 if (($# != 2 )); then
   echo "Usage: ./benchmark_deriche.sh <n-reps> <target>"
