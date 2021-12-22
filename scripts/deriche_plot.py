@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker
 import argparse
 import os
+import numpy as np
 
 ########### GRAPH PROPERTIES ############
 
@@ -20,6 +21,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('results_path', help='root directory of the benchmark results')
 parser.add_argument('target', help='target version')
 args = parser.parse_args()
+
+targets = ['deriche_mpi_baseline', 'deriche_mpi_rdma', 'deriche_mpi_segments']
 
 ################# DATA ##################
 
@@ -45,7 +48,7 @@ def read_results_default(root_dir_path):
                     file = open(bm_file_path, 'r')
                     for line in file:
                         bm_file_res.append(float(line))
-                    bm_results.append(max(bm_file_res))
+                    bm_results.append(bm_file_res[3])
                 # Add results of this rep to results of this cpu number
                 cpu_results[rep] = max(bm_results)
             # Add results of this number of cpu to results of this dim
@@ -80,7 +83,7 @@ def read_results_segments(root_dir_path):
                         file = open(bm_file_path, 'r')
                         for line in file:
                             bm_file_res.append(float(line))
-                        bm_results.append(max(bm_file_res))
+                        bm_results.append((bm_file_res[3]))
                     # Add results of this rep to results of this cpu number
                     cpu_results[rep] = max(bm_results)
                 # Add results of this number of cpu to results of this dim
@@ -133,8 +136,8 @@ def read_results_ref(root_dir_path):
             for line in file:
                 bm_results.append(float(line))
             # Add results of this rep to results of this dim
-            print(bm_file_path)
-            print(bm_results)
+            # print(bm_file_path)
+            # print(bm_results)
             dim_results[rep] = bm_results[0]
         results[dim] = dim_results
     return results
@@ -159,14 +162,28 @@ else:
     exit(-1)
 
 # Compute arithmetic mean and variance, speedup compared to baseline
+print(results)
 
-dim_10_baseline = read_results_ref(root_dir_path)[10]
-dim_10_results = {}
+baseline_root_path = os.path.join(args.results_path, 'deriche_ref')
+dim = 11
+dim_baseline = read_results_ref(baseline_root_path)[dim]
+dim_results = {}
 if is_segmented:
-    dim_10_results = results[16][10]
+    dim_results = results[16][dim]
 else:
-    dim_10_results = results[10]
+    dim_results = results[dim]
 
+n_cpus = [1, 2, 4, 8, 16, 32]
+dim_cpus_reps = np.array([[i for i in dim_results[cpu].values()] for cpu in n_cpus])
+dim_cpus_mean = np.array([ np.mean(reps) for reps in dim_cpus_reps ])
+dim_cpus_var = np.array([ np.var(reps) for reps in dim_cpus_reps ])
+
+dim_baseline_reps = np.array([rep for rep in dim_baseline.values()])
+dim_baseline_mean = np.mean(dim_baseline_reps)
+dim_baseline_var = np.var(dim_baseline_reps)
+
+speedup = np.array([ dim_baseline_mean / runtime for runtime in dim_cpus_mean])
+efficiency = np.array([ s / cpus for (s, cpus) in zip(speedup, n_cpus)])
 
 procs = ['1', '2', '4', '8', '16', '32']
 reference_impl = [0.1356376 for i in range(len(procs))]
