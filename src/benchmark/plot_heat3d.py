@@ -1,5 +1,6 @@
 import os
 import matplotlib.pyplot as plt
+import matplotlib.ticker
 import numpy as np
 
 # Set these for your machine:
@@ -8,6 +9,12 @@ outdir  = '/Users/lukevolpatti/Downloads/plots'
 
 # Parameters
 programs = ['mpi', 'mpi_avx2', 'omp']
+
+# Graph properties
+AXIS_LABEL_COLOR = (.4, .4, .4)
+BACKGROUND_COLOR = (.88, .88, .88)
+HORIZONTAL_LINES_COLOR = (1, 1, 1)
+
 
 def plot_by_size(subfolder):
     subfolder_info = subfolder.split("_")
@@ -71,28 +78,52 @@ def plot_by_size(subfolder):
     avx2_x, avx2_y = zip(*avx2_l)
     omp_l = sorted(omp_total_runtime.items())
     omp_x, omp_y = zip(*omp_l)
-    plt.figure()
-    plt.plot(mpi_x, mpi_y, label='mpi')
-    plt.plot(avx2_x, avx2_y, label='avx2')
-    plt.plot(omp_x, omp_y, label='omp')
+
+    fig, ax = plt.subplots()
+    plt.plot(mpi_x, mpi_y, 'bo-', label='mpi')
+    plt.plot(avx2_x, avx2_y, 'ro-', label='avx2')
+    plt.plot(omp_x, omp_y, 'go-', label='omp')
     plt.legend()
-    plt.xlabel("# cores")
-    plt.ylabel("Total runtime (s)")
-    plt.title("Problem size: " + prob_size + ", iterations: " + num_iters)
-    plt.show()
+    plt.xlabel("# cores", color=AXIS_LABEL_COLOR)
+    plt.ylabel("Total runtime (s)", color=AXIS_LABEL_COLOR)
+    plt.title("heat-3d, problem size: " + prob_size + ", iterations: " + num_iters)
+
+    plt.tick_params(axis='y', which='both', left=False, right=False)
+    plt.grid(axis='y', color=HORIZONTAL_LINES_COLOR)
+    ax.set_facecolor(BACKGROUND_COLOR)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+
+    plt.savefig("heat-3d_total_runtime_" + prob_size + "_" + num_iters + "x.png")
     
     # Per processor per iteration plots
     mpi_l = sorted(mpi_per_iter.items())
     mpi_x, mpi_y = zip(*mpi_l)
     mpi_err = [np.std(i) for i in mpi_y]
     mpi_y = [np.mean(i) for i in mpi_y]
-    plt.figure()
-    plt.errorbar(mpi_x, mpi_y, yerr=mpi_err, ecolor='black', label='mpi')
+
+    fig, ax = plt.subplots()
+    plt.errorbar(mpi_x, mpi_y,
+            yerr=mpi_err, 
+            ecolor='black', 
+            fmt = 'bo-',
+            label='mpi', 
+            capsize=2)
     plt.legend()
-    plt.xlabel("# cores")
-    plt.ylabel("Time per iteration per core (s)")
-    plt.title("Problem size: " + prob_size + ", iterations: " + num_iters)
-    plt.show()
+    plt.xlabel("# cores", color=AXIS_LABEL_COLOR)
+    plt.ylabel("Time per iteration per core (s)", color=AXIS_LABEL_COLOR)
+    plt.title("heat-3d, problem size: " + prob_size + ", iterations: " + num_iters)
+    plt.tick_params(axis='y', which='both', left=False, right=False)
+    plt.grid(axis='y', color=HORIZONTAL_LINES_COLOR)
+    ax.set_facecolor(BACKGROUND_COLOR)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+
+    plt.savefig("heat-3d_per_iter_" + prob_size + "_" + num_iters + "x.png")
 
     
 if __name__ == '__main__':
