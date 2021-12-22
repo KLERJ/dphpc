@@ -17,6 +17,9 @@ def plot_by_size(subfolder):
     mpi_total_runtime = {}
     mpi_avx2_total_runtime = {}
     omp_total_runtime = {}
+    mpi_per_iter = {}
+    avx2_per_iter = {}
+    omp_per_iter = {}
     instance_dirs = [ f.path for f in os.scandir(subfolder) if f.is_dir() ]
 
     for instance_dir in instance_dirs:
@@ -44,6 +47,20 @@ def plot_by_size(subfolder):
                 mpi_avx2_total_runtime[nprocs] = float(total_runtime)
             elif program_type == "omp":
                 omp_total_runtime[nprocs] = float(total_runtime)
+
+        # Get per processor per iteration runtimes
+        benchmark_files = [ f.path for f in os.scandir(instance_dir) if f.is_file() ]
+        for benchmark_file in benchmark_files:
+            if 'benchmark_' in benchmark_file:
+                with open(benchmark_file, 'r') as f:
+                    values = f.read().splitlines()[-1].split(',')
+                    values = np.array([float(i) for i in values])
+
+                    if program_type == "mpi":
+                        if nprocs in mpi_per_iter:
+                            mpi_per_iter[nprocs] = np.append(mpi_per_iter[nprocs], values)
+                        else:
+                            mpi_per_iter[nprocs] = values
             
     print(mpi_total_runtime)
     
@@ -61,8 +78,21 @@ def plot_by_size(subfolder):
     plt.legend()
     plt.xlabel("# cores")
     plt.ylabel("Total runtime (s)")
+    plt.title("Problem size: " + prob_size + ", iterations: " + num_iters)
     plt.show()
     
+    # Per processor per iteration plots
+    mpi_l = sorted(mpi_per_iter.items())
+    mpi_x, mpi_y = zip(*mpi_l)
+    mpi_err = [np.std(i) for i in mpi_y]
+    mpi_y = [np.mean(i) for i in mpi_y]
+    plt.figure()
+    plt.errorbar(mpi_x, mpi_y, yerr=mpi_err, ecolor='black', label='mpi')
+    plt.legend()
+    plt.xlabel("# cores")
+    plt.ylabel("Time per iteration per core (s)")
+    plt.title("Problem size: " + prob_size + ", iterations: " + num_iters)
+    plt.show()
 
     
 if __name__ == '__main__':
