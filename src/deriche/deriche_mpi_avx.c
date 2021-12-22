@@ -22,6 +22,7 @@
 #include <polybench.h>
 
 /* Include benchmark-specific header. */
+#include "bm.h"
 #include "deriche.h"
 
 #define ROOT_RANK 0
@@ -36,6 +37,12 @@ DATA_TYPE a1, a2, a3, a4, a5, a6, a7, a8;
 __m256d a1_, a2_, a3_, a4_, a5_, a6_, a7_, a8_;
 DATA_TYPE b1, b2, c1, c2;
 __m256d b1_, b2_, c1_, c2_;
+
+// Benchmark handles
+bm_handle benchmark_exclusive_compute;
+bm_handle benchmark_overlap_compute;
+bm_handle benchmark_communication;
+bm_handle benchmark_iter;
 
 /* Array initialization. */
 static void init_array_private(long bw, long h, int rank, DATA_TYPE *imgIn) {
@@ -73,7 +80,7 @@ static void deriche_horizontal(long bw, long h, long bh,
                                MPI_Datatype segment_block_t) {
 
   DATA_TYPE ym1, ym2;
-  for (long i = 0; i < bw; i+=1) {
+  for (long i = 0; i < bw; i += 1) {
     ym1 = SCALAR_VAL(0.0);
     ym2 = SCALAR_VAL(0.0);
 
@@ -82,10 +89,11 @@ static void deriche_horizontal(long bw, long h, long bh,
     // index 0 to 3
     long j = 0;
     long idx_0 = (i * h) + j;
-    DATA_TYPE *firstHalf = (DATA_TYPE*) malloc(4*sizeof(DATA_TYPE));
+    DATA_TYPE *firstHalf = (DATA_TYPE *)malloc(4 * sizeof(DATA_TYPE));
 
     __m256d xm1_X1 = _mm256_load_pd(imgInPriv + idx_0);
-    __m256d xm1_X2 = _mm256_set_pd(imgInPriv[idx_0 + 2], imgInPriv[idx_0 + 1], imgInPriv[idx_0], 0.0);
+    __m256d xm1_X2 = _mm256_set_pd(imgInPriv[idx_0 + 2], imgInPriv[idx_0 + 1],
+                                   imgInPriv[idx_0], 0.0);
     __m256d a2xmX2 = _mm256_mul_pd(a2_, xm1_X2);
     __m256d firstHalf_ = _mm256_fmadd_pd(a1_, xm1_X1, a2xmX2);
     _mm256_store_pd(firstHalf, firstHalf_);
@@ -106,21 +114,21 @@ static void deriche_horizontal(long bw, long h, long bh,
     ym2 = ym1;
     ym1 = y1t_3;
 
-    y1[idx_0]     = y1t_0;
+    y1[idx_0] = y1t_0;
     y1[idx_0 + 1] = y1t_1;
     y1[idx_0 + 2] = y1t_2;
     y1[idx_0 + 3] = y1t_3;
-    
+
     // index 4 to (h-1)
-    for (long j = 4; j < h; j+=4) {
+    for (long j = 4; j < h; j += 4) {
       long idx_0 = (i * h) + j;
-    
+
       __m256d xm1_X1 = _mm256_load_pd(imgInPriv + idx_0);
       __m256d xm1_X2 = _mm256_load_pd(imgInPriv + idx_0 - 1);
       __m256d a2xmX2 = _mm256_mul_pd(a2_, xm1_X2);
       __m256d firstHalf_ = _mm256_fmadd_pd(a1_, xm1_X1, a2xmX2);
       _mm256_store_pd(firstHalf, firstHalf_);
-     
+
       // xm1_1 = imgInPriv[idx_0];
       // y1t_0 = a1 * xm1_1 + a2 * xm1_0 + b1 * ym1_0 + b2 * ym2_0;
       // ym2_1 = ym1_0;
@@ -140,7 +148,7 @@ static void deriche_horizontal(long bw, long h, long bh,
       // y1t_3 = a1 * xm1_0 + a2 * xm1_3 + b1 * ym1_3 + b2 * ym2_3;
       // ym2_0 = ym1_3;
       // ym1_0 = y1t_3;
-      
+
       y1t_0 = firstHalf[0] + b1 * ym1 + b2 * ym2;
       ym2 = ym1;
       ym1 = y1t_0;
@@ -157,7 +165,7 @@ static void deriche_horizontal(long bw, long h, long bh,
       ym2 = ym1;
       ym1 = y1t_3;
 
-      y1[idx_0]     = y1t_0;
+      y1[idx_0] = y1t_0;
       y1[idx_0 + 1] = y1t_1;
       y1[idx_0 + 2] = y1t_2;
       y1[idx_0 + 3] = y1t_3;
@@ -165,17 +173,19 @@ static void deriche_horizontal(long bw, long h, long bh,
   }
 
   DATA_TYPE yp1, yp2;
-  for (long i = 0; i < bw; i+=1) {
+  for (long i = 0; i < bw; i += 1) {
     yp1 = SCALAR_VAL(0.0);
     yp2 = SCALAR_VAL(0.0);
     DATA_TYPE y2t_0, y2t_1, y2t_2, y2t_3;
 
     // index h-1 to h-4
     long idx = (i * h) + (h - 1);
-    DATA_TYPE *firstHalf = (DATA_TYPE*) malloc(4*sizeof(DATA_TYPE));
+    DATA_TYPE *firstHalf = (DATA_TYPE *)malloc(4 * sizeof(DATA_TYPE));
 
-    __m256d xp1_X1 = _mm256_set_pd(imgInPriv[idx-2], imgInPriv[idx-1], imgInPriv[idx], 0.0);
-    __m256d xp2_X2 = _mm256_set_pd(imgInPriv[idx-1], imgInPriv[idx], 0.0, 0.0);
+    __m256d xp1_X1 = _mm256_set_pd(imgInPriv[idx - 2], imgInPriv[idx - 1],
+                                   imgInPriv[idx], 0.0);
+    __m256d xp2_X2 =
+        _mm256_set_pd(imgInPriv[idx - 1], imgInPriv[idx], 0.0, 0.0);
     __m256d intrmd1 = _mm256_mul_pd(a4_, xp2_X2);
     __m256d firstHalf_ = _mm256_fmadd_pd(a3_, xp1_X1, intrmd1);
     _mm256_store_pd(firstHalf, firstHalf_);
@@ -195,17 +205,19 @@ static void deriche_horizontal(long bw, long h, long bh,
     yp2 = yp1;
     yp1 = y2t_3;
 
-    y1[idx]   = c1 * (y1[idx] + y2t_0);
-    y1[idx-1] = c1 * (y1[idx-1] + y2t_1);
-    y1[idx-2] = c1 * (y1[idx-2] + y2t_2);
-    y1[idx-3] = c1 * (y1[idx-3] + y2t_3);
+    y1[idx] = c1 * (y1[idx] + y2t_0);
+    y1[idx - 1] = c1 * (y1[idx - 1] + y2t_1);
+    y1[idx - 2] = c1 * (y1[idx - 2] + y2t_2);
+    y1[idx - 3] = c1 * (y1[idx - 3] + y2t_3);
 
     // index h-5 to 0
-    for (long j = h - 5; j >= 0; j-=4) {
+    for (long j = h - 5; j >= 0; j -= 4) {
       long idx = (i * h) + j;
 
-      __m256d xp1_X1 = _mm256_set_pd(imgInPriv[idx-2], imgInPriv[idx-1], imgInPriv[idx], imgInPriv[idx+1]);
-      __m256d xp2_X2 = _mm256_set_pd(imgInPriv[idx-1], imgInPriv[idx], imgInPriv[idx+1], imgInPriv[idx+2]);
+      __m256d xp1_X1 = _mm256_set_pd(imgInPriv[idx - 2], imgInPriv[idx - 1],
+                                     imgInPriv[idx], imgInPriv[idx + 1]);
+      __m256d xp2_X2 = _mm256_set_pd(imgInPriv[idx - 1], imgInPriv[idx],
+                                     imgInPriv[idx + 1], imgInPriv[idx + 2]);
       __m256d intrmd1 = _mm256_mul_pd(a4_, xp2_X2);
       __m256d firstHalf_ = _mm256_fmadd_pd(a3_, xp1_X1, intrmd1);
       _mm256_store_pd(firstHalf, firstHalf_);
@@ -250,14 +262,17 @@ static void deriche_horizontal(long bw, long h, long bh,
       yp2 = yp1;
       yp1 = y2t_3;
 
-      y1[idx]   = c1 * (y1[idx] + y2t_0);
-      y1[idx-1] = c1 * (y1[idx-1] + y2t_1);
-      y1[idx-2] = c1 * (y1[idx-2] + y2t_2);
-      y1[idx-3] = c1 * (y1[idx-3] + y2t_3);
+      y1[idx] = c1 * (y1[idx] + y2t_0);
+      y1[idx - 1] = c1 * (y1[idx - 1] + y2t_1);
+      y1[idx - 2] = c1 * (y1[idx - 2] + y2t_2);
+      y1[idx - 3] = c1 * (y1[idx - 3] + y2t_3);
     }
 
     // Every SW rows (i.e. when one segment is complete) send it to processors
     if ((i != 0) && (i % SW == 0)) {
+      bm_pause(&benchmark_exclusive_compute);
+      bm_resume(&benchmark_communication);
+
       for (int dst_rank = 0; dst_rank < size; dst_rank++) {
         MPI_Request req;
         size_t offset = (i - SW) * h + dst_rank * bh;
@@ -267,6 +282,9 @@ static void deriche_horizontal(long bw, long h, long bh,
         MPI_Request_free(&req);
         /* printf("Send to %d done offset: %zu\n", dst_rank, offset); */
       }
+
+      bm_pause(&benchmark_communication);
+      bm_resume(&benchmark_exclusive_compute);
     }
   }
 
@@ -301,10 +319,12 @@ static void deriche_vertical(long w, long bh, DATA_TYPE *restrict imgOutPriv,
     long idx_1 = bh + j;
     long idx_2 = (2 * bh) + j;
     long idx_3 = (3 * bh) + j;
-    DATA_TYPE *firstHalf = (DATA_TYPE*) malloc(4*sizeof(DATA_TYPE));
+    DATA_TYPE *firstHalf = (DATA_TYPE *)malloc(4 * sizeof(DATA_TYPE));
 
-    __m256d imgX0 = _mm256_set_pd(imgOutPriv[idx_3], imgOutPriv[idx_2], imgOutPriv[idx_1], imgOutPriv[idx_0]);
-    __m256d imgX1 = _mm256_set_pd(imgOutPriv[idx_2], imgOutPriv[idx_1], imgOutPriv[idx_0], 0.0);
+    __m256d imgX0 = _mm256_set_pd(imgOutPriv[idx_3], imgOutPriv[idx_2],
+                                  imgOutPriv[idx_1], imgOutPriv[idx_0]);
+    __m256d imgX1 = _mm256_set_pd(imgOutPriv[idx_2], imgOutPriv[idx_1],
+                                  imgOutPriv[idx_0], 0.0);
     __m256d intrmd1 = _mm256_mul_pd(a6_, imgX1);
     __m256d firstHalf_ = _mm256_fmadd_pd(a5_, imgX0, intrmd1);
     _mm256_store_pd(firstHalf, firstHalf_);
@@ -330,19 +350,33 @@ static void deriche_vertical(long w, long bh, DATA_TYPE *restrict imgOutPriv,
     y2[idx_2] = y1t_2;
     y2[idx_3] = y1t_3;
 
-    for (long i = 4; i < w; i+=4) {
+    for (long i = 4; i < w; i += 4) {
       // Every SW rows, we need to make sure that the data we need is ready
-      if (i % SW == 0) {
+      if (i % SW == 0 && j == 0) {
+        bm_pause(&benchmark_exclusive_compute);
+        bm_resume(&benchmark_communication);
+
         MPI_Wait(requests + (i / SW), MPI_STATUS_IGNORE);
+
+        bm_pause(&benchmark_communication);
+        bm_resume(&benchmark_exclusive_compute);
+        if (i == (w - SW)) {
+          // After the last MPI_Wait, we only do computation
+          bm_stop(&benchmark_overlap_compute);
+          bm_stop(&benchmark_communication);
+        }
       }
 
       long idx_0 = (i * bh) + j;
-      long idx_1 = ((i+1) * bh) + j;
-      long idx_2 = ((i+2) * bh) + j;
-      long idx_3 = ((i+3) * bh) + j;
+      long idx_1 = ((i + 1) * bh) + j;
+      long idx_2 = ((i + 2) * bh) + j;
+      long idx_3 = ((i + 3) * bh) + j;
 
-      __m256d imgX0 = _mm256_set_pd(imgOutPriv[idx_3], imgOutPriv[idx_2], imgOutPriv[idx_1], imgOutPriv[idx_0]);
-      __m256d imgX1 = _mm256_set_pd(imgOutPriv[idx_2], imgOutPriv[idx_1], imgOutPriv[idx_0], imgOutPriv[((i-1) * bh) + j]);
+      __m256d imgX0 = _mm256_set_pd(imgOutPriv[idx_3], imgOutPriv[idx_2],
+                                    imgOutPriv[idx_1], imgOutPriv[idx_0]);
+      __m256d imgX1 =
+          _mm256_set_pd(imgOutPriv[idx_2], imgOutPriv[idx_1], imgOutPriv[idx_0],
+                        imgOutPriv[((i - 1) * bh) + j]);
       __m256d intrmd1 = _mm256_mul_pd(a6_, imgX1);
       __m256d firstHalf_ = _mm256_fmadd_pd(a5_, imgX0, intrmd1);
       _mm256_store_pd(firstHalf, firstHalf_);
@@ -427,6 +461,16 @@ int main(int argc, char **argv) {
     MPI_Abort(MPI_COMM_WORLD, 4);
   }
 
+  // Benchmark initialization
+  char *benchmark_path = NULL;
+  if (argc == 2) {
+    benchmark_path = argv[1];
+  }
+  bm_init(&benchmark_exclusive_compute, 1);
+  bm_init(&benchmark_overlap_compute, 1);
+  bm_init(&benchmark_communication, 1);
+  bm_init(&benchmark_iter, 1);
+
   // Segment block type : sw rows, bh columns each
   MPI_Datatype _segment_block_t, segment_block_t;
   MPI_Type_vector(SW, bh, h, MPI_DOUBLE, &_segment_block_t);
@@ -462,6 +506,8 @@ int main(int argc, char **argv) {
 
   /* Start timer. */
   double t_start = MPI_Wtime();
+  bm_start(&benchmark_iter);
+  bm_start(&benchmark_exclusive_compute);
 
   k = (SCALAR_VAL(1.0) - EXP_FUN(-alpha)) *
       (SCALAR_VAL(1.0) - EXP_FUN(-alpha)) /
@@ -489,6 +535,9 @@ int main(int argc, char **argv) {
   c1_ = _mm256_set1_pd(c1);
   c2_ = _mm256_set1_pd(c2);
 
+  bm_pause(&benchmark_exclusive_compute);
+  bm_start(&benchmark_communication);
+  bm_start(&benchmark_overlap_compute);
   /* Start receving segment blocks from other processors */
   const int segments_per_rank = bw / SW;
   const int n_requests = segments_per_rank * size; // == W / SW
@@ -506,29 +555,57 @@ int main(int argc, char **argv) {
                 MPI_COMM_WORLD, requests + req_offset);
     }
   }
+  bm_pause(&benchmark_communication);
 
   /* Run kernel. */
 
   deriche_horizontal(bw, h, bh, imgInPriv, y1, size, segment_block_t);
   deriche_vertical(w, bh, imgOutPriv, y2, requests);
 
+  bm_stop(&benchmark_exclusive_compute);
+  bm_stop(&benchmark_iter);
+
   /* Stop and print timer. */
   double t_end = MPI_Wtime();
-#ifndef POLYBENCH_DUMP_ARRAYS
-  printf("%d %0.6lf\n", rank, t_end - t_start);
-#endif
-
-#ifdef POLYBENCH_DUMP_ARRAYS
-  MPI_Gather(imgOutPriv, w * bh, MPI_DOUBLE, imgOut, 1, bh_cols_t, ROOT_RANK,
-             MPI_COMM_WORLD);
-#endif
+  // #ifndef POLYBENCH_DUMP_ARRAYS
+  //   printf("%d %0.6lf\n", rank, t_end - t_start);
+  // #endif
+  //
+  // #ifdef POLYBENCH_DUMP_ARRAYS
+  //   MPI_Gather(imgOutPriv, w * bh, MPI_DOUBLE, imgOut, 1, bh_cols_t,
+  //   ROOT_RANK,
+  //              MPI_COMM_WORLD);
+  // #endif
   if (rank == ROOT_RANK) {
+    printf("%0.6lf\n", t_end - t_start);
     /* Prevent dead-code elimination. All live-out data must be printed
        by the function call in argument. */
-    polybench_prevent_dce(print_array(w, h, imgOut));
+    // polybench_prevent_dce(print_array(w, h, imgOut));
+  }
+  polybench_prevent_dce(print_array(w, bh, imgOutPriv));
+
+  // Dump benchmarks
+  if (benchmark_path != NULL) {
+    char bm_output_name[512];
+    snprintf(bm_output_name, 512, "%s/benchmark_%d.csv", benchmark_path, rank);
+    FILE *benchmark_dump = fopen(bm_output_name, "w");
+    if (benchmark_dump == NULL) {
+      fprintf(stderr, "Couldn't open file\n");
+    }
+
+    bm_print_events(&benchmark_communication, benchmark_dump);
+    bm_print_events(&benchmark_overlap_compute, benchmark_dump);
+    bm_print_events(&benchmark_exclusive_compute, benchmark_dump);
+    bm_print_events(&benchmark_iter, benchmark_dump);
+    fclose(benchmark_dump);
   }
 
   /* Be clean. */
+  bm_destroy(&benchmark_communication);
+  bm_destroy(&benchmark_overlap_compute);
+  bm_destroy(&benchmark_exclusive_compute);
+  bm_destroy(&benchmark_iter);
+
   free(imgOut);
   free(imgOutPriv);
   free(imgInPriv);
