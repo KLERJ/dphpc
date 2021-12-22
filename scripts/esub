@@ -36,7 +36,8 @@ SUB_DIR="heat_bm"
 TARGET=$(printf "heat-3d_%d_%dx" $DN $DSTEPS)
 
 
-
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd $REPO_ROOT
 RUN_DIR=$(printf "%s/%s/%s_%s%s" $SCRATCH $SUB_DIR $RUN_ID $TARGET $SCORE_P)
 
 
@@ -58,8 +59,9 @@ sleep 1
 
 
 mkdir -p $RUN_DIR
+cp $REPO_ROOT/scripts/heat_benchmark.sh $RUN_DIR
 
 
 
-bsub -W $TIME -n $N_THREADS -R "rusage[mem=$N_MEM]" -R "model=$CPU_MODEL" -J "$TARGET" -u "$USER_EMAIL" -oo $RUN_DIR/output.txt -eo $RUN_DIR/error.txt "./heat_benchmark.sh $RUN_DIR $USE_SCOREP $DN $DSTEPS"
+bsub -W $TIME -n $N_THREADS -R "rusage[mem=$N_MEM]" -R "model=$CPU_MODEL" -J "$TARGET" -u "$USER_EMAIL" -oo $RUN_DIR/output.txt -eo $RUN_DIR/error.txt "$RUN_DIR/heat_benchmark.sh $RUN_DIR $USE_SCOREP $DN $DSTEPS"
 

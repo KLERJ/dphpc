@@ -1,7 +1,5 @@
 #!/bin/bash
 
-cd ..
-
 #Problem setup
 
 N_THREADS=(1 2 4 8 16 32 64 128 256)
@@ -22,6 +20,7 @@ function run_heat3d_mpi(){
 
 	target=$1
 	use_scorep=$2
+	extra_flags=$3
 
 	if [ "$use_scorep" = "true" ]; then
 		echo "Using Scorep"
@@ -31,7 +30,7 @@ function run_heat3d_mpi(){
 	fi
 	
 	# make clean
-	make $target MPI_CC="$CC" EXTRA_FLAGS="-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME" BIN_DIR=$RUN_DIR;
+	make $target MPI_CC="$CC" EXTRA_FLAGS="-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME $extra_flags" BIN_DIR=$RUN_DIR;
 	hwloc-ls --output-format xml > $RUN_DIR/hwloc.xml 
 	lscpu > $RUN_DIR/cpu.txt
 
@@ -39,7 +38,7 @@ function run_heat3d_mpi(){
 	do
 		n_threads=${N_THREADS[$i]}
 	
-		EXP_NAME=$(printf "%s_%dx_%dsize" $target $n_threads $DN)
+		EXP_NAME=$(printf "%s_%dx_%dsize%s" $target $n_threads $DN $extra_flags)
 
 	
 		EXP_DIR="$RUN_DIR/$EXP_NAME"
@@ -105,7 +104,9 @@ function run_heat3d_baseline(){
 	cd ../../..
 }
 
-run_heat3d_mpi heat-3d_mpi $USE_SCOREP
+run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=0"
+run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=1"
+run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=2"
 run_heat3d_mpi heat-3d_mpi_avx2 $USE_SCOREP
 
 run_heat3d_baseline;
