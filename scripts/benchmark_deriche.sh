@@ -8,7 +8,7 @@ fi
 N_REPS=$1
 TARGET=$2
 
-env2lmod
+# Assume using the lmod system
 module load gcc/8.2.0 openmpi/4.0.2
 
 # DATASETS=('MINI' 'SMALL' 'MEDIUM' 'LARGE' 'EXTRALARGE')
