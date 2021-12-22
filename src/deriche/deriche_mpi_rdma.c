@@ -104,10 +104,8 @@ static void deriche_horizontal(long bw, long h, long bh, DATA_TYPE *imgInPriv,
     }
 
     if ((i + 1) % SW == 0) {
-      if (i + 1 == SW) {
-        bm_pause(&benchmark_exclusive_compute);
-        bm_start(&benchmark_communication);
-      }
+      bm_pause(&benchmark_exclusive_compute);
+      bm_resume(&benchmark_communication);
 
       size_t offset = (i - SW + 1) * h;
       for (int dst_rank = 0; dst_rank < size; dst_rank++) {
@@ -116,9 +114,8 @@ static void deriche_horizontal(long bw, long h, long bh, DATA_TYPE *imgInPriv,
         offset += bh;
       }
 
-      if (i + 1 == SW) {
-        bm_start(&benchmark_overlap_compute);
-      }
+      bm_pause(&benchmark_communication);
+      bm_resume(&benchmark_exclusive_compute);
     }
   }
 }
@@ -242,6 +239,8 @@ int main(int argc, char **argv) {
 
   alpha = 0.25; // parameter of the filter
 
+  bm_start(&benchmark_overlap_compute);
+  bm_stop(&benchmark_overlap_compute);
   /* Start timer. */
   // polybench_start_instruments;
   double t_start = MPI_Wtime();
@@ -260,13 +259,19 @@ int main(int argc, char **argv) {
   b2 = -EXP_FUN(SCALAR_VAL(-2.0) * alpha);
   c1 = c2 = 1;
 
+  bm_pause(&benchmark_exclusive_compute);
   /* Run kernel. */
+  bm_start(&benchmark_communication);
   MPI_Win_fence(0, imgOutWin);
+  bm_pause(&benchmark_communication);
+
+  bm_start(&benchmark_exclusive_compute);
   deriche_horizontal(bw, h, bh, imgInPriv, y1, rank, size, imgOutWin,
                      segment_block_t);
-  bm_stop(&benchmark_overlap_compute);
-  MPI_Win_fence(0, imgOutWin);
+  bm_pause(&benchmark_exclusive_compute);
 
+  bm_resume(&benchmark_communication);
+  MPI_Win_fence(0, imgOutWin);
   bm_stop(&benchmark_communication);
 
   bm_resume(&benchmark_exclusive_compute);
