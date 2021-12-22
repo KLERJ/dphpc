@@ -11,6 +11,8 @@ BINARY_DERICHE_OMP=${BIN_DIR}/deriche_omp
 BINARY_SEIDEL2D_OMP=${BIN_DIR}/seidel-2d_omp
 BINARY_HEAT3D_OMP=${BIN_DIR}/heat-3d_omp
 BINARY_HEAT3D_MPI=${BIN_DIR}/heat-3d_mpi
+BINARY_HEAT3D_MPI_AVX2=${BIN_DIR}/heat-3d_mpi_avx2
+
 OUTPUT_DERICHE=deriche_${SIZE}_out.txt
 
 DERICHE_DIM=
@@ -33,7 +35,7 @@ endif
 
 MPI_CC=mpicc
 
-all: deriche_omp deriche deriche_ref deriche_mpi_baseline deriche_mpi_rdma seidel-2d_omp heat-3d_omp heat-3d_mpi
+all: deriche_omp deriche deriche_ref deriche_mpi_baseline deriche_mpi_rdma seidel-2d_omp heat-3d_omp heat-3d_mpi heat-3d_mpi_avx2
 
 .PHONY: clean run
 
@@ -77,6 +79,9 @@ heat-3d_omp:
 
 heat-3d_mpi:
 	${MPI_CC} ${CFLAGS}  ${SRC_DIR}/heat-3d/heat-3d_mpi.c  -o ${BINARY_HEAT3D_MPI} ${EXTRA_FLAGS}
+
+heat-3d_mpi_avx2:
+	${MPI_CC} ${CFLAGS}  ${SRC_DIR}/heat-3d/heat-3d_mpi_avx2.c  -o ${BINARY_HEAT3D_MPI_AVX2} ${EXTRA_FLAGS}
 
 clean:
 	@ rm -f ${BINARY_DERICHE} ${BINARY_DERICHE_OMP} ${BINARY_SEIDEL2D_OMP} ${BINARY_HEAT3D_OMP}

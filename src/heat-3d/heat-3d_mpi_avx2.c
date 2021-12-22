@@ -20,9 +20,9 @@
 /* Include benchmark-specific header. */
 #include "bm.h"
 #include "heat-3d.h"
+#include <immintrin.h>
 #include <mpi.h>
 #include <stdbool.h>
-#include <immintrin.h>
 
 // #define DEBUG
 
@@ -86,9 +86,9 @@
 #define BACK_NEIGHBOR 5
 
 /* Array initialization. */
-static void init_array(int n, DATA_TYPE *A) {
+static inline void init_array(int n, DATA_TYPE *A) {
   int i, j, k;
-  int c = 0;
+  // int c = 0;
 
   for (i = 0; i < n; i++)
     for (j = 0; j < n; j++)
@@ -96,9 +96,9 @@ static void init_array(int n, DATA_TYPE *A) {
         *IDX(A, i, j, k, n, n) = (DATA_TYPE)(i * i + j + (n - k)) * 10 / (n);
 }
 
-static void my_init_array(int nx, int ny, int nz, DATA_TYPE *A) {
+static inline void my_init_array(int nx, int ny, int nz, DATA_TYPE *A) {
   int i, j, k;
-  int c = 0;
+  // int c = 0;
   for (i = 0; i < nx; i++)
     for (j = 0; j < ny; j++)
       for (k = 0; k < nz; k++) {
@@ -111,7 +111,7 @@ static void my_init_array(int nx, int ny, int nz, DATA_TYPE *A) {
 
 /* DCE code. Must scan the entire live-out data.
    Can be used also to check the correctness of the output. */
-static void print_array(int n, DATA_TYPE *A)
+static inline void print_array(int n, DATA_TYPE *A)
 
 {
   int i, j, k;
@@ -129,7 +129,8 @@ static void print_array(int n, DATA_TYPE *A)
   POLYBENCH_DUMP_FINISH;
 }
 
-static void my_print_array(FILE *ptr, int nx, int ny, int nz, DATA_TYPE *A)
+static inline void my_print_array(FILE *ptr, int nx, int ny, int nz,
+                                  DATA_TYPE *A)
 
 {
   int i, j, k;
@@ -143,6 +144,36 @@ static void my_print_array(FILE *ptr, int nx, int ny, int nz, DATA_TYPE *A)
     }
     fprintf(ptr, "\n");
   }
+}
+
+static void my_local_init_array(int fullcube_sizes[3], int subcube_sizes[3],
+                                int coords[3], DATA_TYPE *__restrict__ A) {
+  // int nx = fullcube_sizes[0];
+  // int ny = fullcube_sizes[1];
+  int nz = fullcube_sizes[2];
+
+  int sx = subcube_sizes[0];
+  int sy = subcube_sizes[1];
+  int sz = subcube_sizes[2];
+
+  int px = coords[0];
+  int py = coords[1];
+  int pz = coords[2];
+
+  int i, j, k, i_full, j_full, k_full;
+  // int c = 0;
+  for (i = 0; i < sx; i++)
+    for (j = 0; j < sy; j++)
+      for (k = 0; k < sz; k++) {
+        i_full = i + px * sx;
+        j_full = j + py * sy;
+        k_full = k + pz * sz;
+
+        *IDX(A, i, j, k, sy, sz) =
+            (DATA_TYPE)(i_full * i_full + j_full + (nz - k_full)) * 10 / (nz);
+
+        // *IDX(A, i, j, k, ny, nz) = (i + 1) * c++;
+      }
 }
 
 #ifdef DEBUG
@@ -163,20 +194,16 @@ static void print_face(FILE *ptr, int ni, int nj, DATA_TYPE *A)
 
 /* Main computational kernel. The whole function will be timed,
    including the call and return. */
-static
-void compute_inner_step_kernel_heat_3d(int nx,
-          int ny,
-          int nz,
-          DATA_TYPE *A,
-          DATA_TYPE *B)
-{
+static void compute_inner_step_kernel_heat_3d(int nx, int ny, int nz,
+                                              DATA_TYPE *__restrict__ A,
+                                              DATA_TYPE *__restrict__ B) {
   // Row major array
   // i loops over X
-  // j loops over Y 
+  // j loops over Y
   // k loops over Z (contiguous)
 
   // Constant arrays
-  double a[4] = {0.125,0.125,0.125,0.125};
+  double a[4] = {0.125, 0.125, 0.125, 0.125};
   __m256d consts1 = _mm256_loadu_pd(a);
 
   double m1[4] = {0.125, 0.25, 0.125, 0};
@@ -187,72 +214,82 @@ void compute_inner_step_kernel_heat_3d(int nx,
 
   int i, j, k;
 
-  for (i = 2; i < nx-2; i++) {
-      for (j = 2; j < ny-2; j++) {
-          for (k = 2; k < nz-6; k+=4) {    
-              // Note: there are comments below showing AVX register contents, from highest
-              // bits to lowest.
-              
-              // Summing elements not from the z axis
-              __m256d ip1 = _mm256_loadu_pd(IDX(A, i+1, j, k, ny, nz));
-              __m256d im1 = _mm256_loadu_pd(IDX(A, i-1, j, k, ny, nz));
-              __m256d jp1 = _mm256_loadu_pd(IDX(A, i, j+1, k, ny, nz));
-              __m256d jm1 = _mm256_loadu_pd(IDX(A, i, j-1, k, ny, nz));
+  for (i = 2; i < nx - 2; i++) {
+    for (j = 2; j < ny - 2; j++) {
+      for (k = 2; k < nz - 6; k += 4) {
+        // Note: there are comments below showing AVX register contents, from
+        // highest bits to lowest.
 
-              __m256d kp1 = _mm256_loadu_pd(IDX(A, i, j, k+1, ny, nz)); // k+4, k+3, k+2, k+1
-              __m256d km1 = _mm256_loadu_pd(IDX(A, i, j, k-1, ny, nz)); // k+2, k+1, k, k-1
+        // Summing elements not from the z axis
+        __m256d ip1 = _mm256_loadu_pd(IDX(A, i + 1, j, k, ny, nz));
+        __m256d im1 = _mm256_loadu_pd(IDX(A, i - 1, j, k, ny, nz));
+        __m256d jp1 = _mm256_loadu_pd(IDX(A, i, j + 1, k, ny, nz));
+        __m256d jm1 = _mm256_loadu_pd(IDX(A, i, j - 1, k, ny, nz));
 
-              // The following can all be done in parallel
-              __m256d r1 = _mm256_add_pd(ip1, im1);
-              __m256d r2 = _mm256_add_pd(jp1, jm1);
+        __m256d kp1 =
+            _mm256_loadu_pd(IDX(A, i, j, k + 1, ny, nz)); // k+4, k+3, k+2, k+1
+        __m256d km1 =
+            _mm256_loadu_pd(IDX(A, i, j, k - 1, ny, nz)); // k+2, k+1, k, k-1
 
-              __m256d k1 = _mm256_mul_pd(km1, mask1);
-              __m256d k2 = _mm256_mul_pd(km1, mask2);
-              __m256d k3 = _mm256_mul_pd(kp1, mask1);
-              __m256d k4 = _mm256_mul_pd(kp1, mask2);
+        // The following can all be done in parallel
+        __m256d r1 = _mm256_add_pd(ip1, im1);
+        __m256d r2 = _mm256_add_pd(jp1, jm1);
 
-              k1 = _mm256_hadd_pd(k1, k2);
-              k3 = _mm256_hadd_pd(k3, k4);
+        __m256d k1 = _mm256_mul_pd(km1, mask1);
+        __m256d k2 = _mm256_mul_pd(km1, mask2);
+        __m256d k3 = _mm256_mul_pd(kp1, mask1);
+        __m256d k4 = _mm256_mul_pd(kp1, mask2);
 
-              __m128d h1 = _mm256_extractf128_pd(k1, 1);
-              __m128d h2 = _mm256_extractf128_pd(k3, 1);
-              __m128d l1 = _mm256_extractf128_pd(k1, 0);
-              __m128d l2 = _mm256_extractf128_pd(k3, 0);
+        k1 = _mm256_hadd_pd(k1, k2);
+        k3 = _mm256_hadd_pd(k3, k4);
 
-              h1 = _mm_add_pd(h1, l1);
-              h2 = _mm_add_pd(h2, l2);
+        __m128d h1 = _mm256_extractf128_pd(k1, 1);
+        __m128d h2 = _mm256_extractf128_pd(k3, 1);
+        __m128d l1 = _mm256_extractf128_pd(k1, 0);
+        __m128d l2 = _mm256_extractf128_pd(k3, 0);
 
-              k1 = _mm256_set_m128d(h2, h1);
+        h1 = _mm_add_pd(h1, l1);
+        h2 = _mm_add_pd(h2, l2);
 
-              r1 = _mm256_add_pd(r1, r2);
-              r1 = _mm256_mul_pd(r1, consts1);
+        k1 = _mm256_set_m128d(h2, h1);
 
-              r1 = _mm256_add_pd(r1, k1);
+        r1 = _mm256_add_pd(r1, r2);
+        r1 = _mm256_mul_pd(r1, consts1);
 
-              _mm256_storeu_pd(IDX(B, i, j, k, ny, nz), r1);
+        r1 = _mm256_add_pd(r1, k1);
 
-              // Summing elements from the z axis
-              /*double* q = (double*) &r1;
-              *IDX(B, i, j, k, ny, nz) = q[0] + SCALAR_VAL(0.125)*(*IDX(A, i, j, k-1, ny, nz) + *IDX(A, i, j, k+1, ny, nz)) + SCALAR_VAL(0.25) * *IDX(A, i, j, k, ny, nz); 
-              *IDX(B, i, j, k+1, ny, nz) = q[1] + SCALAR_VAL(0.125)*(*IDX(A, i, j, k, ny, nz) + *IDX(A, i, j, k+2, ny, nz)) + SCALAR_VAL(0.25) * *IDX(A, i, j, k+1, ny, nz); 
-              *IDX(B, i, j, k+2, ny, nz) = q[2] + SCALAR_VAL(0.125)*(*IDX(A, i, j, k+1, ny, nz) + *IDX(A, i, j, k+3, ny, nz)) + SCALAR_VAL(0.25) * *IDX(A, i, j, k+2, ny, nz); 
-              *IDX(B, i, j, k+3, ny, nz) = q[3] + SCALAR_VAL(0.125)*(*IDX(A, i, j, k+2, ny, nz) + *IDX(A, i, j, k+4, ny, nz)) + SCALAR_VAL(0.25) * *IDX(A, i, j, k+3, ny, nz); */
+        _mm256_storeu_pd(IDX(B, i, j, k, ny, nz), r1);
 
-              /**IDX(B, i, j, k, ny, nz) =  UPDATE_STEP(A, i, j, k, ny, nz);
-              *IDX(B, i, j, k+1, ny, nz) =  UPDATE_STEP(A, i, j, k+1, ny, nz);
-              *IDX(B, i, j, k+2, ny, nz) =  UPDATE_STEP(A, i, j, k+2, ny, nz);
-              *IDX(B, i, j, k+3, ny, nz) =  UPDATE_STEP(A, i, j, k+3, ny, nz);*/
-          }
-          while (k < nz-2) {
-              *IDX(B, i, j, k, ny, nz) =  UPDATE_STEP(A, i, j, k, ny, nz);
-              k++;
-          }
+        // Summing elements from the z axis
+        /*double* q = (double*) &r1;
+         *IDX(B, i, j, k, ny, nz) = q[0] + SCALAR_VAL(0.125)*(*IDX(A, i, j, k-1,
+         *ny, nz) + *IDX(A, i, j, k+1, ny, nz)) + SCALAR_VAL(0.25) * *IDX(A, i,
+         *j, k, ny, nz); IDX(B, i, j, k+1, ny, nz) = q[1] +
+         *SCALAR_VAL(0.125)*(*IDX(A, i, j, k, ny, nz) + *IDX(A, i, j, k+2, ny,
+         *nz)) + SCALAR_VAL(0.25) * *IDX(A, i, j, k+1, ny, nz); IDX(B, i, j,
+         *k+2, ny, nz) = q[2] + SCALAR_VAL(0.125)*(*IDX(A, i, j, k+1, ny, nz) +
+         **IDX(A, i, j, k+3, ny, nz)) + SCALAR_VAL(0.25) * *IDX(A, i, j, k+2,
+         *ny, nz);
+         *IDX(B, i, j, k+3, ny, nz) = q[3] + SCALAR_VAL(0.125)*(*IDX(A, i, j,
+         *k+2, ny, nz) + *IDX(A, i, j, k+4, ny, nz)) + SCALAR_VAL(0.25) *
+         **IDX(A, i, j, k+3, ny, nz); */
+
+        /**IDX(B, i, j, k, ny, nz) =  UPDATE_STEP(A, i, j, k, ny, nz);
+         *IDX(B, i, j, k+1, ny, nz) =  UPDATE_STEP(A, i, j, k+1, ny, nz);
+         *IDX(B, i, j, k+2, ny, nz) =  UPDATE_STEP(A, i, j, k+2, ny, nz);
+         *IDX(B, i, j, k+3, ny, nz) =  UPDATE_STEP(A, i, j, k+3, ny, nz);*/
       }
+      while (k < nz - 2) {
+        *IDX(B, i, j, k, ny, nz) = UPDATE_STEP(A, i, j, k, ny, nz);
+        k++;
+      }
+    }
   }
 }
 
 static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
-                                               DATA_TYPE *A, DATA_TYPE *B,
+                                               DATA_TYPE *__restrict__ A,
+                                               DATA_TYPE *__restrict__ B,
                                                int neighbors[6],
                                                DATA_TYPE *neighborFaces[6]) {
 
@@ -656,6 +693,8 @@ int main(int argc, char **argv) {
   bm_handle benchmark_overlap_compute;
   bm_handle benchmark_communication;
   bm_handle benchmark_iter;
+  bm_handle benchmark_scatter_gather;
+  bm_handle benchmark_total;
 
   if (argc == 3) {
     output_path = argv[1];
@@ -677,11 +716,10 @@ int main(int argc, char **argv) {
   bm_init(&benchmark_overlap_compute, 2 * tsteps);
   bm_init(&benchmark_communication, 2 * tsteps);
   bm_init(&benchmark_iter, 2 * tsteps);
+  bm_init(&benchmark_scatter_gather, 2);
+  bm_init(&benchmark_total, 1);
 
-  (void)&print_array;
-  (void)&init_array;
-
-  DATA_TYPE *full_cube = NULL, *A, *B, *tmp;
+  DATA_TYPE *A, *B, *tmp;
 
   MPI_Init(&argc, &argv);
   int rank, p;
@@ -708,7 +746,7 @@ int main(int argc, char **argv) {
     printf("Processors: %d N: %d, Steps:%d\n", p, nx, tsteps);
   }
 
-  // Set up cubical topology topolo
+  // Set up cubical topology topocomm
   int periods[3] = {0, 0, 0};
   MPI_Comm topocomm;
   MPI_Cart_create(comm, 3, pdims, periods, 0, &topocomm);
@@ -716,6 +754,9 @@ int main(int argc, char **argv) {
   // The current processor coordinates
   int coords[3];
   MPI_Cart_coords(topocomm, rank, 3, coords);
+
+  printf("Rank: %d, x: %d, y: %d, z: %d\n", rank, coords[0], coords[1],
+         coords[2]);
 
   // The sizes of the local volumes
   sx = nx / px;
@@ -831,6 +872,10 @@ int main(int argc, char **argv) {
   MPI_Type_commit(&xzFace_neighbor);
   MPI_Type_commit(&yzFace_neighbor);
 
+  bm_start(&benchmark_scatter_gather);
+#ifdef GLOBAL_INIT
+  DATA_TYPE *full_cube = NULL;
+
   if (rank == 0) {
 
     /* Variable declaration/allocation. */
@@ -872,10 +917,23 @@ int main(int argc, char **argv) {
                MPI_COMM_WORLD);
   memcpy(B, A, sizeof(DATA_TYPE) * sx * sy * sz);
 
+#else
+
+  my_local_init_array(fullcube_sizes, subcube_sizes, coords, A);
+
+  memcpy(B, A, sizeof(DATA_TYPE) * sx * sy * sz);
+
+  if (rank == 0) {
+    polybench_start_instruments;
+  }
+#endif
+  bm_stop(&benchmark_scatter_gather);
+
   /*************************************************************************
    *  Start timestep itteration
    *
    * ***********************************************************************/
+  bm_start(&benchmark_total);
   for (int t = 1; t <= 2 * tsteps; t++) {
 
     bm_start(&benchmark_communication);
@@ -935,7 +993,14 @@ int main(int argc, char **argv) {
 
     bm_stop(&benchmark_exclusive_compute);
     bm_stop(&benchmark_iter);
+    if (rank == 0 && t % 16 == 0) {
+      printf("Iter %d\n", t);
+    }
   }
+  bm_stop(&benchmark_total);
+
+  bm_start(&benchmark_scatter_gather);
+#ifdef GLOBAL_INIT
 
   for (int i = 0; i < p; i++) {
     sendcounts[i] = 1;
@@ -948,6 +1013,13 @@ int main(int argc, char **argv) {
   MPI_Gatherv(A, 1, subCubeRcv, full_cube, sendcounts, displs, subCubeSend, 0,
               MPI_COMM_WORLD);
 
+  free(sendcounts);
+  free(displs);
+#else
+
+#endif
+  bm_stop(&benchmark_scatter_gather);
+
   /* Be clean. */
   if (rank == 0) {
     polybench_stop_instruments;
@@ -955,18 +1027,20 @@ int main(int argc, char **argv) {
 
     /* Prevent dead-code elimination. All live-out data must be printed
        by the function call in argument. */
+#ifdef GLOBAL_INIT
 
     FILE *out_ptr = fopen(output_path, "wb");
 
     fwrite(full_cube, sizeof(DATA_TYPE), nx * ny * nz, out_ptr);
 
-    // my_print_array(stderr, nx, ny, nz, full_cube);
-
-    fclose(out_ptr);
-
     free(full_cube);
+    fclose(out_ptr);
+#else
+    (void)output_path;
+#endif
   }
 
+#ifndef NO_BENCHMARKS // Only print benchmakrs, if we haven't disabled it
   // Dump benchmarks
   char bm_output_name[512];
   snprintf(bm_output_name, 512, "%s/benchmark_%d.csv", benchmark_path, rank);
@@ -974,15 +1048,21 @@ int main(int argc, char **argv) {
   if (benchmark_dump == NULL) {
     fprintf(stderr, "Couldn't open file\n");
   }
-  bm_print_events(&benchmark_communication, benchmark_dump);
-  bm_print_events(&benchmark_overlap_compute, benchmark_dump);
-  bm_print_events(&benchmark_exclusive_compute, benchmark_dump);
-  bm_print_events(&benchmark_iter, benchmark_dump);
+
+  bm_print_events(&benchmark_total,
+                  benchmark_dump); // total
+  bm_print_events(&benchmark_scatter_gather,
+                  benchmark_dump); // Scatter and gather benchmarks
+  bm_print_events(&benchmark_communication,
+                  benchmark_dump); // Communication time
+  bm_print_events(&benchmark_overlap_compute,
+                  benchmark_dump); // Overlap computation time
+  bm_print_events(&benchmark_exclusive_compute,
+                  benchmark_dump); // Exclusive compute (neighbors) time
+  bm_print_events(&benchmark_iter, benchmark_dump); // Total time per iteration
 
   fclose(benchmark_dump);
-
-  free(sendcounts);
-  free(displs);
+#endif
 
   free(A);
   free(B);

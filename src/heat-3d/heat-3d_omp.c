@@ -9,39 +9,33 @@
  */
 /* heat-3d.c: this file is part of PolyBench/C */
 
-#include <stdio.h>
-#include <unistd.h>
-#include <string.h>
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 /* Include polybench common header. */
 #include <polybench.h>
 
 /* Include benchmark-specific header. */
+#include "bm.h"
 #include "heat-3d.h"
 #include <omp.h>
 
-
 /* Array initialization. */
-static
-void init_array (int n,
-		 DATA_TYPE POLYBENCH_3D(A,N,N,N,n,n,n),
-		 DATA_TYPE POLYBENCH_3D(B,N,N,N,n,n,n))
-{
+static void init_array(int n, DATA_TYPE POLYBENCH_3D(A, N, N, N, n, n, n),
+                       DATA_TYPE POLYBENCH_3D(B, N, N, N, n, n, n)) {
   int i, j, k;
 
   for (i = 0; i < n; i++)
     for (j = 0; j < n; j++)
       for (k = 0; k < n; k++)
-        A[i][j][k] = B[i][j][k] = (DATA_TYPE) (i + j + (n-k))* 10 / (n);
+        A[i][j][k] = B[i][j][k] = (DATA_TYPE)(i + j + (n - k)) * 10 / (n);
 }
-
 
 /* DCE code. Must scan the entire live-out data.
    Can be used also to check the correctness of the output. */
-static
-void print_array(int n,
-		 DATA_TYPE POLYBENCH_3D(A,N,N,N,n,n,n))
+static void print_array(int n, DATA_TYPE POLYBENCH_3D(A, N, N, N, n, n, n))
 
 {
   int i, j, k;
@@ -51,55 +45,75 @@ void print_array(int n,
   for (i = 0; i < n; i++)
     for (j = 0; j < n; j++)
       for (k = 0; k < n; k++) {
-         if ((i * n * n + j * n + k) % 20 == 0) fprintf(POLYBENCH_DUMP_TARGET, "\n");
-         fprintf(POLYBENCH_DUMP_TARGET, DATA_PRINTF_MODIFIER, A[i][j][k]);
+        if ((i * n * n + j * n + k) % 20 == 0)
+          fprintf(POLYBENCH_DUMP_TARGET, "\n");
+        fprintf(POLYBENCH_DUMP_TARGET, DATA_PRINTF_MODIFIER, A[i][j][k]);
       }
   POLYBENCH_DUMP_END("A");
   POLYBENCH_DUMP_FINISH;
 }
 
-
 /* Main computational kernel. The whole function will be timed,
    including the call and return. */
-static
-void kernel_heat_3d(int tsteps,
-		      int n,
-		      DATA_TYPE POLYBENCH_3D(A,N,N,N,n,n,n),
-		      DATA_TYPE POLYBENCH_3D(B,N,N,N,n,n,n))
-{
+static void kernel_heat_3d(int tsteps, int n,
+                           DATA_TYPE POLYBENCH_3D(A, N, N, N, n, n, n),
+                           DATA_TYPE POLYBENCH_3D(B, N, N, N, n, n, n)) {
+  bm_handle benchmark_exclusive_compute;
+  bm_init(&benchmark_exclusive_compute, 2 * TSTEPS);
 
 #pragma scop
-    for (int t = 1; t <= TSTEPS; t++) {
-        #pragma omp parallel for
-        for (int i = 1; i < _PB_N-1; i++) {
-            for (int j = 1; j < _PB_N-1; j++) {
-                for (int k = 1; k < _PB_N-1; k++) {
-                    B[i][j][k] =   SCALAR_VAL(0.125) * (A[i+1][j][k] - SCALAR_VAL(2.0) * A[i][j][k] + A[i-1][j][k])
-                                 + SCALAR_VAL(0.125) * (A[i][j+1][k] - SCALAR_VAL(2.0) * A[i][j][k] + A[i][j-1][k])
-                                 + SCALAR_VAL(0.125) * (A[i][j][k+1] - SCALAR_VAL(2.0) * A[i][j][k] + A[i][j][k-1])
-                                 + A[i][j][k];
-                }
-            }
-        }
-        #pragma omp parallel for
-        for (int i = 1; i < _PB_N-1; i++) {
-           for (int j = 1; j < _PB_N-1; j++) {
-               for (int k = 1; k < _PB_N-1; k++) {
-                   A[i][j][k] =   SCALAR_VAL(0.125) * (B[i+1][j][k] - SCALAR_VAL(2.0) * B[i][j][k] + B[i-1][j][k])
-                                + SCALAR_VAL(0.125) * (B[i][j+1][k] - SCALAR_VAL(2.0) * B[i][j][k] + B[i][j-1][k])
-                                + SCALAR_VAL(0.125) * (B[i][j][k+1] - SCALAR_VAL(2.0) * B[i][j][k] + B[i][j][k-1])
-                                + B[i][j][k];
-               }
-           }
-       }
-    }
-#pragma endscop
 
+  for (int t = 1; t <= TSTEPS; t++) {
+    bm_start(&benchmark_exclusive_compute);
+#pragma omp parallel for
+    for (int i = 1; i < _PB_N - 1; i++) {
+      for (int j = 1; j < _PB_N - 1; j++) {
+        for (int k = 1; k < _PB_N - 1; k++) {
+          B[i][j][k] = SCALAR_VAL(0.125) *
+                           (A[i + 1][j][k] - SCALAR_VAL(2.0) * A[i][j][k] +
+                            A[i - 1][j][k]) +
+                       SCALAR_VAL(0.125) *
+                           (A[i][j + 1][k] - SCALAR_VAL(2.0) * A[i][j][k] +
+                            A[i][j - 1][k]) +
+                       SCALAR_VAL(0.125) *
+                           (A[i][j][k + 1] - SCALAR_VAL(2.0) * A[i][j][k] +
+                            A[i][j][k - 1]) +
+                       A[i][j][k];
+        }
+      }
+    }
+    bm_stop(&benchmark_exclusive_compute);
+    bm_start(&benchmark_exclusive_compute);
+
+#pragma omp parallel for
+    for (int i = 1; i < _PB_N - 1; i++) {
+      for (int j = 1; j < _PB_N - 1; j++) {
+        for (int k = 1; k < _PB_N - 1; k++) {
+          A[i][j][k] = SCALAR_VAL(0.125) *
+                           (B[i + 1][j][k] - SCALAR_VAL(2.0) * B[i][j][k] +
+                            B[i - 1][j][k]) +
+                       SCALAR_VAL(0.125) *
+                           (B[i][j + 1][k] - SCALAR_VAL(2.0) * B[i][j][k] +
+                            B[i][j - 1][k]) +
+                       SCALAR_VAL(0.125) *
+                           (B[i][j][k + 1] - SCALAR_VAL(2.0) * B[i][j][k] +
+                            B[i][j][k - 1]) +
+                       B[i][j][k];
+        }
+      }
+    }
+    bm_stop(&benchmark_exclusive_compute);
+  }
+  FILE *benchmark_dump = fopen("output", "w");
+  if (benchmark_dump == NULL) {
+    fprintf(stderr, "Couldn't open file\n");
+  }
+  bm_print_events(&benchmark_exclusive_compute,
+                  benchmark_dump); // total
+#pragma endscop
 }
 
-
-int main(int argc, char** argv)
-{
+int main(int argc, char **argv) {
   /* Retrieve problem size. */
   int n = N;
   int tsteps = TSTEPS;
@@ -108,15 +122,14 @@ int main(int argc, char** argv)
   POLYBENCH_3D_ARRAY_DECL(A, DATA_TYPE, N, N, N, n, n, n);
   POLYBENCH_3D_ARRAY_DECL(B, DATA_TYPE, N, N, N, n, n, n);
 
-
   /* Initialize array(s). */
-  init_array (n, POLYBENCH_ARRAY(A), POLYBENCH_ARRAY(B));
+  init_array(n, POLYBENCH_ARRAY(A), POLYBENCH_ARRAY(B));
 
   /* Start timer. */
   polybench_start_instruments;
 
   /* Run kernel. */
-  kernel_heat_3d (tsteps, n, POLYBENCH_ARRAY(A), POLYBENCH_ARRAY(B));
+  kernel_heat_3d(tsteps, n, POLYBENCH_ARRAY(A), POLYBENCH_ARRAY(B));
 
   /* Stop and print timer. */
   polybench_stop_instruments;
