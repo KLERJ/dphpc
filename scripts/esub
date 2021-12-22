@@ -29,7 +29,7 @@ TIME=04:00
 #CPU_MODEL=EPYC_7742 # Euler VI 27648 instances
 CPU_MODEL=EPYC_7H12 # Euler VII 37376 instances
 
-USER_EMAIL=jmandula@student.ethz.ch
+USER_EMAIL="$USER@student.ethz.ch"
 
 RUN_ID=$(date +%Y_%m_%d_%H%M%S)
 SUB_DIR="heat_bm"

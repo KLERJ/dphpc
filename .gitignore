@@ -55,3 +55,6 @@ compile_commands.json
 
 # benchmark stuff
 src/benchmark/diff_output
+diff
+scripts/diff
+
