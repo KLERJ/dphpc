@@ -8,8 +8,8 @@ import numpy as np
 
 ########### GRAPH PROPERTIES ############
 
-TITLE = 'Runtime deriche. LARGE dataset. Apple M1 Pro, avg. of 10 runs'
-Y_LABEL = 'Runtime [seconds]'
+TITLE = 'Speedup - Strong Scaling - WxH = $2^{10}$x$2^{10}$ , AMD EPYC 7H12, arithmetic mean of 25 runs'
+Y_LABEL = 'Speedup'
 X_LABEL = '# cores'
 FILENAME = 'test'
 AXIS_LABEL_COLOR = (.4, .4, .4)
@@ -19,7 +19,6 @@ HORIZONTAL_LINES_COLOR = (1, 1, 1)
 # ARGUMENTS
 parser = argparse.ArgumentParser()
 parser.add_argument('results_path', help='root directory of the benchmark results')
-parser.add_argument('target', help='target version')
 args = parser.parse_args()
 
 targets = ['deriche_mpi_baseline', 'deriche_mpi_rdma', 'deriche_mpi_segments']
@@ -142,68 +141,65 @@ def read_results_ref(root_dir_path):
         results[dim] = dim_results
     return results
 
-FILENAME = args.target + "_plot"
-# Extract data from files in results dir
-root_dir_path = args.results_path + '/' + args.target
-# whether the results contains a 'SW' parameter or not
-is_segmented = (args.target == 'deriche_mpi_segments') | (args.target == 'deriche_mpi_')
-is_mpi = is_segmented | (args.target == 'deriche_mpi_baseline')
-is_ref = (args.target == 'deriche_ref')
+def efficiency_speedup_for_dim(dim, results_path, target):
 
-results = {}
-if is_segmented:
-    results = read_results_segments(root_dir_path)
-elif is_mpi:
-    results = read_results_default(root_dir_path)
-elif is_ref:
-    results = read_results_ref(root_dir_path)
-else:
-    print("Invalid target parameter")
-    exit(-1)
+    baseline_root_path = os.path.join(args.results_path, 'deriche_ref')
+    baseline = read_results_ref(baseline_root_path)[dim]
+    dim_baseline_reps = np.array([rep for rep in baseline.values()])
+    dim_baseline_mean = np.mean(dim_baseline_reps)
+    dim_baseline_var = np.var(dim_baseline_reps)
 
-# Compute arithmetic mean and variance, speedup compared to baseline
-print(results)
 
-baseline_root_path = os.path.join(args.results_path, 'deriche_ref')
-dim = 11
-dim_baseline = read_results_ref(baseline_root_path)[dim]
-dim_results = {}
-if is_segmented:
-    dim_results = results[16][dim]
-else:
-    dim_results = results[dim]
+    root_dir_path = results_path + '/' + target
+    # whether the results contains a 'SW' parameter or not
+    is_segmented = (target == 'deriche_mpi_segments') | (target == 'deriche_mpi_')
+    is_mpi = is_segmented | (target == 'deriche_mpi_baseline')
 
-n_cpus = [1, 2, 4, 8, 16, 32]
-dim_cpus_reps = np.array([[i for i in dim_results[cpu].values()] for cpu in n_cpus])
-dim_cpus_mean = np.array([ np.mean(reps) for reps in dim_cpus_reps ])
-dim_cpus_var = np.array([ np.var(reps) for reps in dim_cpus_reps ])
+    results = {}
+    if is_segmented:
+        results = read_results_segments(root_dir_path)
+    elif is_mpi:
+        results = read_results_default(root_dir_path)
+    else:
+        print("Invalid target parameter")
+        exit(-1)
 
-dim_baseline_reps = np.array([rep for rep in dim_baseline.values()])
-dim_baseline_mean = np.mean(dim_baseline_reps)
-dim_baseline_var = np.var(dim_baseline_reps)
+    dim_results = {}
+    if is_segmented:
+        dim_results = results[16][dim]
+    else:
+        dim_results = results[dim]
 
-speedup = np.array([ dim_baseline_mean / runtime for runtime in dim_cpus_mean])
-efficiency = np.array([ s / cpus for (s, cpus) in zip(speedup, n_cpus)])
+
+    # Compute arithmetic mean and variance, speedup compared to baseline, efficiency
+    n_cpus = [1, 2, 4, 8, 16, 32]
+    dim_cpus_reps = np.array([[i for i in dim_results[cpu].values()] for cpu in n_cpus])
+    dim_cpus_mean = np.array([ np.mean(reps) for reps in dim_cpus_reps ])
+    dim_cpus_var = np.array([ np.var(reps) for reps in dim_cpus_reps ])
+
+    speedup = np.array([ dim_baseline_mean / runtime for runtime in dim_cpus_mean])
+    efficiency = np.array([ s / cpus for (s, cpus) in zip(speedup, n_cpus)])
+
+    return speedup, efficiency
+
+speedup_baseline, efficiency_baseline = efficiency_speedup_for_dim(11, args.results_path, 'deriche_mpi_baseline')
+print(speedup_baseline, efficiency_baseline)
 
 procs = ['1', '2', '4', '8', '16', '32']
-reference_impl = [0.1356376 for i in range(len(procs))]
-baseline = [0.21723179999999997, 0.09163249999999999, 0.0488108, 0.033523599999999994]
-rdma = [0.2195272, 0.0859053, 0.044615699999999994, 0.0324671]
-data = [reference_impl, baseline, rdma]
 
 #########################################
 
 procs = [int(x) for x in procs]
-line_styles = ['bo-', 'ro-', 'go-', 'yo-', 'mo-']
+line_styles = ['b.-', 'ro-', 'go-', 'yo-', 'mo-']
 
 fig, ax = plt.subplots()
-for i in range(len(data)):
-    plt.plot(procs, data[i], line_styles[i])
+plt.plot(procs, speedup_baseline, line_styles[0], label='MPI Alltoall')
 
 # line labels
-plt.text(x=5, y=0.14, s='ref impl', color='blue')
-plt.text(x=5, y=0.05, s='MPI baseline', color='red')
-plt.text(x=3, y=0.03, s='MPI RDMA', color='green')
+ax.legend() # less work for now lol
+# plt.text(x=5, y=0.14, s='ref impl', color='blue')
+# plt.text(x=5, y=0.05, s='MPI baseline', color='blue')
+# plt.text(x=3, y=0.03, s='MPI RDMA', color='green')
 
 # axes
 # plt.ylim(0.025, 0.25)
@@ -211,7 +207,7 @@ plt.text(x=3, y=0.03, s='MPI RDMA', color='green')
 # plt.yticks(np.arange(0, 2.76, .25))
 
 # title, axes labels
-plt.title(TITLE, y=1.07, loc='left', x=-0.1)
+plt.title(TITLE, y=1.07, size=12)
 plt.ylabel(' ' + Y_LABEL, rotation=0, horizontalalignment='left', y=1.02, color=AXIS_LABEL_COLOR)
 plt.xlabel(X_LABEL, color=AXIS_LABEL_COLOR)
 
@@ -219,8 +215,10 @@ plt.xlabel(X_LABEL, color=AXIS_LABEL_COLOR)
 plt.tick_params(axis='y', which='both', left=False, right=False)
 
 # horizontal lines, background
-plt.grid(axis='y', color=HORIZONTAL_LINES_COLOR)
-ax.set_facecolor(BACKGROUND_COLOR)
+ax.set_facecolor('#eeeeee')
+ax.yaxis.grid(color='#fafafa', linewidth=1.0)
+ax.yaxis.grid(True)
+ax.xaxis.grid(True)
 
 # hide box, add digit separator
 ax.spines['top'].set_visible(False)
@@ -230,4 +228,5 @@ ax.get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: 
 
 # save
 # plt.savefig(FILENAME + '.svg')
+plt.show()
 plt.savefig(FILENAME + '.png', dpi=300)
