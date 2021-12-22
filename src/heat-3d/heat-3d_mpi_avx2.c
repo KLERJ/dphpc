@@ -26,6 +26,16 @@
 
 // #define DEBUG
 
+#ifndef Z_DIM
+#define Z_DIM 0
+#endif
+#ifndef Y_DIM
+#define Y_DIM 0
+#endif
+#ifndef X_DIM
+#define X_DIM 0
+#endif
+
 #define MPI_DATATYPE MPI_DOUBLE
 #define IDX(ARRAY, X, Y, Z, NY, NZ)                                            \
   ((ARRAY) + ((X) * (NY) * (NZ)) + ((Y) * (NZ)) + (Z))
@@ -747,7 +757,7 @@ int main(int argc, char **argv) {
   }
 
   // Set up cubical topology topocomm
-  int periods[3] = {0, 0, 0};
+  int periods[3] = {X_DIM, Y_DIM, Z_DIM};
   MPI_Comm topocomm;
   MPI_Cart_create(comm, 3, pdims, periods, 0, &topocomm);
 

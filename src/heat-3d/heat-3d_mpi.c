@@ -23,6 +23,16 @@
 #include <mpi.h>
 #include <stdbool.h>
 
+#ifndef Z_DIM
+#define Z_DIM 0
+#endif
+#ifndef Y_DIM
+#define Y_DIM 0
+#endif
+#ifndef X_DIM
+#define X_DIM 0
+#endif
+
 // #define DEBUG
 
 #define MPI_DATATYPE MPI_DOUBLE
@@ -651,7 +661,7 @@ int main(int argc, char **argv) {
   MPI_Comm_size(comm, &p);
 
   // Number of processors along a dimension
-  int pdims[3] = {0, 0, 0};
+  int pdims[3] = {X_DIM, Y_DIM, Z_DIM};
   MPI_Dims_create(p, 3, pdims);
   int px = pdims[0];
   int py = pdims[1];
