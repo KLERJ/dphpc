@@ -74,7 +74,8 @@ static void print_array(long w, long h, DATA_TYPE *imgOut) {
 static void deriche_horizontal(long bw, long h, long bh,
                                DATA_TYPE *restrict imgInPriv,
                                DATA_TYPE *restrict y1, int size,
-                               MPI_Datatype segment_block_t) {
+                               MPI_Datatype segment_block_t,
+                               MPI_Request *restrict requests) {
 
   DATA_TYPE xm1, ym1, ym2;
   DATA_TYPE xp1, xp2;
@@ -114,12 +115,11 @@ static void deriche_horizontal(long bw, long h, long bh,
       bm_resume(&benchmark_communication);
 
       for (int dst_rank = 0; dst_rank < size; dst_rank++) {
-        MPI_Request req;
         size_t offset = (i - SW) * h + dst_rank * bh;
+        size_t req_offset = (i / SW - 1) * size + dst_rank;
         MPI_Isend(y1 + offset, 1, segment_block_t, dst_rank, 0, MPI_COMM_WORLD,
-                  &req);
+                  requests + req_offset);
 
-        MPI_Request_free(&req);
         /* printf("Send to %d done offset: %zu\n", dst_rank, offset); */
       }
 
@@ -128,17 +128,18 @@ static void deriche_horizontal(long bw, long h, long bh,
     }
   }
 
+  const int segments_per_rank = bw / SW;
   // Send the last segment as well
   for (int dst_rank = 0; dst_rank < size; dst_rank++) {
     bm_pause(&benchmark_exclusive_compute);
     bm_resume(&benchmark_communication);
 
-    MPI_Request req;
     size_t offset = (bw - SW) * h + dst_rank * bh;
+    size_t req_offset = (segments_per_rank - 1) * size + dst_rank;
     MPI_Isend(y1 + offset, 1, segment_block_t, dst_rank, 0, MPI_COMM_WORLD,
-              &req);
+              requests + req_offset);
 
-    MPI_Request_free(&req);
+    // MPI_Request_free(&req);
     /* printf("Send to %d done offset: %zu\n", dst_rank, offset); */
     bm_pause(&benchmark_communication);
     bm_resume(&benchmark_exclusive_compute);
@@ -304,6 +305,7 @@ int main(int argc, char **argv) {
   /* Start receving segment blocks from other processors */
   const int segments_per_rank = bw / SW;
   const int n_requests = segments_per_rank * size; // == W / SW
+  MPI_Request send_requests[n_requests];
   MPI_Request requests[n_requests];
   for (int src_rank = 0; src_rank < size; src_rank++) {
     // Receive segments from one rank
@@ -322,7 +324,8 @@ int main(int argc, char **argv) {
 
   /* Run kernel. */
 
-  deriche_horizontal(bw, h, bh, imgInPriv, y1, size, segment_block_t);
+  deriche_horizontal(bw, h, bh, imgInPriv, y1, size, segment_block_t,
+                     send_requests);
 
   deriche_vertical(w, bh, imgOutPriv, y2, requests);
 
