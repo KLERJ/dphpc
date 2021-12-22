@@ -2,7 +2,7 @@
 
 #Problem setup
 
-N_THREADS=(1 2 4 8 16 32 64 128 256)
+N_THREADS=(1 2 4 8 16 32 128 256)
 
 
 
@@ -21,6 +21,13 @@ function run_heat3d_mpi(){
 	target=$1
 	use_scorep=$2
 	extra_flags=$3
+	skip_first=${4:-false}
+
+	if [ "$skip_first" = "true" ]; then
+		start_zero=1
+	else
+		start_zero=0
+	fi
 
 	if [ "$use_scorep" = "true" ]; then
 		echo "Using Scorep"
@@ -34,7 +41,7 @@ function run_heat3d_mpi(){
 	hwloc-ls --output-format xml > $RUN_DIR/hwloc.xml 
 	lscpu > $RUN_DIR/cpu.txt
 
-	for ((i=0;i<${#N_THREADS[@]};i++))
+	for ((i=$start_zero;i<${#N_THREADS[@]};i++))
 	do
 		n_threads=${N_THREADS[$i]}
 	
@@ -63,6 +70,14 @@ function run_heat3d_omp(){
 
 
 	target=$1
+
+	skip_first=${2:-false}
+
+	if [ "$skip_first" = "true" ]; then
+		start_zero=1
+	else
+		start_zero=0
+	fi
 
 	
 	# make clean
@@ -104,11 +119,11 @@ function run_heat3d_baseline(){
 	cd ../../..
 }
 
-run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=0"
-run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=1"
-run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=2"
-run_heat3d_mpi heat-3d_mpi_avx2 $USE_SCOREP
+run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=0" false 
+run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=1" true # Skip 1 Core iter
+run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=2" true # Skip 1 Core iter
 
+run_heat3d_mpi heat-3d_mpi_avx2 $USE_SCOREP "" true # Skip 1 Core iter
 run_heat3d_baseline;
 
-run_heat3d_omp heat-3d_omp; 
+run_heat3d_omp heat-3d_omp true; # Skip 1 core iter
