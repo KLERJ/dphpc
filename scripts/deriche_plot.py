@@ -8,10 +8,12 @@ import numpy as np
 
 ########### GRAPH PROPERTIES ############
 
-TITLE = 'Speedup - Strong Scaling - WxH = $2^{10}$x$2^{10}$ , AMD EPYC 7H12, arithmetic mean of 25 runs'
+dim = 10
+POW_OF_2 = '$2^{' + str(dim) +  '}$'
+TITLE = 'Speedup - Strong Scaling - W,H = ' + POW_OF_2 +  ',' +  POW_OF_2 + ', AMD EPYC 7H12'
 Y_LABEL = 'Speedup'
 X_LABEL = '# cores'
-FILENAME = 'test'
+FILENAME = 'deriche_dim' + str(dim) + '_plot'
 AXIS_LABEL_COLOR = (.4, .4, .4)
 BACKGROUND_COLOR = (.88, .88, .88)
 HORIZONTAL_LINES_COLOR = (1, 1, 1)
@@ -141,7 +143,7 @@ def read_results_ref(root_dir_path):
         results[dim] = dim_results
     return results
 
-def efficiency_speedup_for_dim(dim, results_path, target):
+def efficiency_speedup_for_dim(sw, dim, results_path, target):
 
     baseline_root_path = os.path.join(args.results_path, 'deriche_ref')
     baseline = read_results_ref(baseline_root_path)[dim]
@@ -149,24 +151,30 @@ def efficiency_speedup_for_dim(dim, results_path, target):
     dim_baseline_mean = np.mean(dim_baseline_reps)
     dim_baseline_var = np.var(dim_baseline_reps)
 
+    print('target: ', target)
+    print('baseline: ', dim_baseline_mean)
 
     root_dir_path = results_path + '/' + target
     # whether the results contains a 'SW' parameter or not
-    is_segmented = (target == 'deriche_mpi_segments') | (target == 'deriche_mpi_')
+    is_segmented = (target == 'deriche_mpi_segments') | (target == 'deriche_mpi_rdma')
     is_mpi = is_segmented | (target == 'deriche_mpi_baseline')
+    is_omp = (target == 'deriche_omp')
 
     results = {}
     if is_segmented:
+        print('sw: ', sw)
         results = read_results_segments(root_dir_path)
     elif is_mpi:
         results = read_results_default(root_dir_path)
+    elif is_omp:
+        results = read_results_omp(root_dir_path)
     else:
         print("Invalid target parameter")
         exit(-1)
 
     dim_results = {}
     if is_segmented:
-        dim_results = results[16][dim]
+        dim_results = results[sw][dim]
     else:
         dim_results = results[dim]
 
@@ -179,11 +187,16 @@ def efficiency_speedup_for_dim(dim, results_path, target):
 
     speedup = np.array([ dim_baseline_mean / runtime for runtime in dim_cpus_mean])
     efficiency = np.array([ s / cpus for (s, cpus) in zip(speedup, n_cpus)])
+    print('speedup: ', speedup)
 
     return speedup, efficiency
 
-speedup_baseline, efficiency_baseline = efficiency_speedup_for_dim(11, args.results_path, 'deriche_mpi_baseline')
-print(speedup_baseline, efficiency_baseline)
+print('dim: ', dim)
+speedup_baseline, efficiency_baseline = efficiency_speedup_for_dim(1, dim, args.results_path, 'deriche_mpi_baseline')
+# speedup_rdma16, _ = efficiency_speedup_for_dim(16, dim, args.results_path, 'deriche_mpi_rdma')
+speedup_rdma1, _ = efficiency_speedup_for_dim(1, dim, args.results_path, 'deriche_mpi_rdma')
+speedup_omp, _ = efficiency_speedup_for_dim(1, dim, args.results_path, 'deriche_omp')
+
 
 procs = ['1', '2', '4', '8', '16', '32']
 
@@ -193,7 +206,10 @@ procs = [int(x) for x in procs]
 line_styles = ['b.-', 'ro-', 'go-', 'yo-', 'mo-']
 
 fig, ax = plt.subplots()
-plt.plot(procs, speedup_baseline, line_styles[0], label='MPI Alltoall')
+plt.plot(procs, speedup_baseline, 'b.-', label='MPI Alltoall')
+# plt.plot(procs, speedup_rdma16, 'r.-', label='MPI RDMA SW=16')
+plt.plot(procs, speedup_rdma1, 'r.-', label='MPI RDMA SW=1')
+plt.plot(procs, speedup_omp, 'g.-', label='OMP')
 
 # line labels
 ax.legend() # less work for now lol
@@ -202,7 +218,7 @@ ax.legend() # less work for now lol
 # plt.text(x=3, y=0.03, s='MPI RDMA', color='green')
 
 # axes
-# plt.ylim(0.025, 0.25)
+# plt.ylim(0.0, 20.0)
 # plt.xlim(0, 9)
 # plt.yticks(np.arange(0, 2.76, .25))
 
@@ -213,6 +229,10 @@ plt.xlabel(X_LABEL, color=AXIS_LABEL_COLOR)
 
 # remove y axis ticks
 plt.tick_params(axis='y', which='both', left=False, right=False)
+
+# x ticks
+ax.set_xticks(procs)
+#ax.semilogx(procs)
 
 # horizontal lines, background
 ax.set_facecolor('#eeeeee')
@@ -228,5 +248,5 @@ ax.get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: 
 
 # save
 # plt.savefig(FILENAME + '.svg')
-plt.show()
-plt.savefig(FILENAME + '.png', dpi=300)
+# plt.show()
+plt.savefig(FILENAME + '.png', dpi=600)
