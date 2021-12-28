@@ -6,24 +6,31 @@ import argparse
 import os
 import numpy as np
 
-########### GRAPH PROPERTIES ############
-
-dim = 10
-POW_OF_2 = '$2^{' + str(dim) +  '}$'
-TITLE = 'Speedup - Strong Scaling - W,H = ' + POW_OF_2 +  ',' +  POW_OF_2 + ', AMD EPYC 7H12'
-Y_LABEL = 'Speedup'
-X_LABEL = '# cores'
-FILENAME = 'deriche_dim' + str(dim) + '_plot'
-AXIS_LABEL_COLOR = (.4, .4, .4)
-BACKGROUND_COLOR = (.88, .88, .88)
-HORIZONTAL_LINES_COLOR = (1, 1, 1)
-
 # ARGUMENTS
 parser = argparse.ArgumentParser()
 parser.add_argument('results_path', help='root directory of the benchmark results')
+parser.add_argument('dim',type=int,  help='input size, 2^dim x 2^dim')
 args = parser.parse_args()
+dim = args.dim
 
-targets = ['deriche_mpi_baseline', 'deriche_mpi_rdma', 'deriche_mpi_segments']
+########### GRAPH PROPERTIES ############
+
+POW_OF_2 = '$2^{' + str(dim) +  '}$'
+X_LABEL = '# cores'
+FILENAME = 'deriche_dim' + str(dim)
+AXIS_LABEL_COLOR = (.4, .4, .4)
+BACKGROUND_COLOR = '#eeeeee'
+HORIZONTAL_LINES_COLOR = '#fafafa'
+
+targets = ['deriche_mpi_baseline', 'deriche_mpi_rdma', 'deriche_omp', 'deriche_ref']
+sws = [1, 1, 1, 1]
+labels = ['MPI Alltoall', 'MPI RDMA SW = 1', 'OpenMP', 'polybench']
+
+x_ticks = [x for x in range(6)]
+x_labels = [str(2**x) for x in range(6)]
+line_styles = ['b.-', 'r.-', 'g.-', 'y.-', 'm.-']
+
+dims = [10, 11, 12, 13, 14]
 
 ################# DATA ##################
 
@@ -143,7 +150,50 @@ def read_results_ref(root_dir_path):
         results[dim] = dim_results
     return results
 
-def efficiency_speedup_for_dim(sw, dim, results_path, target):
+def runtime_for_dim(sw, target):
+    print('target: ', target)
+
+    root_dir_path = os.path.join(args.results_path, target)
+    # whether the results contains a 'SW' parameter or not
+    is_segmented = (target == 'deriche_mpi_segments') | (target == 'deriche_mpi_rdma')
+    is_mpi = is_segmented | (target == 'deriche_mpi_baseline')
+    is_omp = (target == 'deriche_omp')
+
+    n_cpus = [1, 2, 4, 8, 16, 32]
+
+    results = {}
+    if is_segmented:
+        print('sw: ', sw)
+        results = read_results_segments(root_dir_path)
+    elif is_mpi:
+        results = read_results_default(root_dir_path)
+    elif is_omp:
+        results = read_results_omp(root_dir_path)
+    elif target == 'deriche_ref':
+        results = read_results_ref(root_dir_path)[dim]
+        dim_baseline_reps = np.array([rep for rep in results.values()])
+        mean = [ np.mean(dim_baseline_reps) for n in range(len(n_cpus)) ]
+        var = [ np.var(dim_baseline_reps) for n in range(len(n_cpus))]
+        return mean, var
+    else:
+        print("Invalid target parameter")
+        exit(-1)
+
+    dim_results = {}
+    if is_segmented:
+        dim_results = results[sw][dim]
+    else:
+        dim_results = results[dim]
+
+    # Compute arithmetic mean and variance, speedup compared to baseline, efficiency
+    dim_cpus_reps = np.array([[i for i in dim_results[cpu].values()] for cpu in n_cpus])
+    mean = np.array([ np.mean(reps) for reps in dim_cpus_reps ])
+    variance = np.array([ np.var(reps) for reps in dim_cpus_reps ])
+
+    return mean, variance
+
+
+def efficiency_speedup_for_dim(sw, target):
 
     baseline_root_path = os.path.join(args.results_path, 'deriche_ref')
     baseline = read_results_ref(baseline_root_path)[dim]
@@ -154,7 +204,7 @@ def efficiency_speedup_for_dim(sw, dim, results_path, target):
     print('target: ', target)
     print('baseline: ', dim_baseline_mean)
 
-    root_dir_path = results_path + '/' + target
+    root_dir_path = args.results_path + '/' + target
     # whether the results contains a 'SW' parameter or not
     is_segmented = (target == 'deriche_mpi_segments') | (target == 'deriche_mpi_rdma')
     is_mpi = is_segmented | (target == 'deriche_mpi_baseline')
@@ -191,62 +241,92 @@ def efficiency_speedup_for_dim(sw, dim, results_path, target):
 
     return speedup, efficiency
 
-print('dim: ', dim)
-speedup_baseline, efficiency_baseline = efficiency_speedup_for_dim(1, dim, args.results_path, 'deriche_mpi_baseline')
-# speedup_rdma16, _ = efficiency_speedup_for_dim(16, dim, args.results_path, 'deriche_mpi_rdma')
-speedup_rdma1, _ = efficiency_speedup_for_dim(1, dim, args.results_path, 'deriche_mpi_rdma')
-speedup_omp, _ = efficiency_speedup_for_dim(1, dim, args.results_path, 'deriche_omp')
+def plot_runtime():
 
 
-procs = ['1', '2', '4', '8', '16', '32']
+    TITLE = 'Runtime - Strong Scaling - W,H = ' + POW_OF_2 +  ',' +  POW_OF_2 + ', AMD EPYC 7H12'
 
-#########################################
+    Y_LABEL = 'Runtime [s]'
 
-procs = [int(x) for x in procs]
-line_styles = ['b.-', 'ro-', 'go-', 'yo-', 'mo-']
+    fig, ax = plt.subplots()
+    for i in range(len(targets)):
+        runtime, variance = runtime_for_dim(sws[i], targets[i])
+        plt.plot(x_ticks, runtime, line_styles[i], label=labels[i])
 
-fig, ax = plt.subplots()
-plt.plot(procs, speedup_baseline, 'b.-', label='MPI Alltoall')
-# plt.plot(procs, speedup_rdma16, 'r.-', label='MPI RDMA SW=16')
-plt.plot(procs, speedup_rdma1, 'r.-', label='MPI RDMA SW=1')
-plt.plot(procs, speedup_omp, 'g.-', label='OMP')
+    ax.legend()
 
-# line labels
-ax.legend() # less work for now lol
-# plt.text(x=5, y=0.14, s='ref impl', color='blue')
-# plt.text(x=5, y=0.05, s='MPI baseline', color='blue')
-# plt.text(x=3, y=0.03, s='MPI RDMA', color='green')
+    # title, axes labels
+    plt.title(TITLE, y=1.07, size=12)
+    plt.ylabel(' ' + Y_LABEL, rotation=0, horizontalalignment='left', y=1.02, color=AXIS_LABEL_COLOR)
+    plt.xlabel(X_LABEL, color=AXIS_LABEL_COLOR)
 
-# axes
-# plt.ylim(0.0, 20.0)
-# plt.xlim(0, 9)
-# plt.yticks(np.arange(0, 2.76, .25))
+    # remove y axis ticks
+    plt.tick_params(axis='y', which='both', left=False, right=False)
 
-# title, axes labels
-plt.title(TITLE, y=1.07, size=12)
-plt.ylabel(' ' + Y_LABEL, rotation=0, horizontalalignment='left', y=1.02, color=AXIS_LABEL_COLOR)
-plt.xlabel(X_LABEL, color=AXIS_LABEL_COLOR)
+    # x ticks
+    ax.set_xticks(x_ticks, labels=x_labels)
 
-# remove y axis ticks
-plt.tick_params(axis='y', which='both', left=False, right=False)
+    # horizontal lines, background
+    ax.set_facecolor(BACKGROUND_COLOR)
+    ax.yaxis.grid(color=HORIZONTAL_LINES_COLOR, linewidth=1.0)
+    ax.yaxis.grid(True)
+    ax.xaxis.grid(True)
 
-# x ticks
-ax.set_xticks(procs)
-#ax.semilogx(procs)
+    # logarithmic y axis
+    plt.yscale('log')
 
-# horizontal lines, background
-ax.set_facecolor('#eeeeee')
-ax.yaxis.grid(color='#fafafa', linewidth=1.0)
-ax.yaxis.grid(True)
-ax.xaxis.grid(True)
+    # hide box, add digit separator
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
 
-# hide box, add digit separator
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-ax.spines['left'].set_visible(False)
-ax.get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+    outfile = FILENAME + '_speedup.png'
+    print('output: ', outfile)
+    plt.savefig(outfile, dpi=600)
 
-# save
-# plt.savefig(FILENAME + '.svg')
-# plt.show()
-plt.savefig(FILENAME + '.png', dpi=600)
+def plot_speedup():
+
+    TITLE = 'Speedup - Strong Scaling - W,H = ' + POW_OF_2 +  ',' +  POW_OF_2 + ', AMD EPYC 7H12'
+
+    Y_LABEL = 'Speedup'
+
+    fig, ax = plt.subplots()
+    for i in range(len(targets)):
+        if targets[i] != 'deriche_ref':
+            speedup, efficiency = efficiency_speedup_for_dim(sws[i], targets[i])
+            plt.plot(x_ticks, speedup, line_styles[i], label=labels[i])
+
+    ax.legend()
+
+    # title, axes labels
+    plt.title(TITLE, y=1.07, size=12)
+    plt.ylabel(' ' + Y_LABEL, rotation=0, horizontalalignment='left', y=1.02, color=AXIS_LABEL_COLOR)
+    plt.xlabel(X_LABEL, color=AXIS_LABEL_COLOR)
+
+    # remove y axis ticks
+    plt.tick_params(axis='y', which='both', left=False, right=False)
+
+    # x ticks
+    ax.set_xticks(x_ticks, labels=x_labels)
+
+    # horizontal lines, background
+    ax.set_facecolor(BACKGROUND_COLOR)
+    ax.yaxis.grid(color=HORIZONTAL_LINES_COLOR, linewidth=1.0)
+    ax.yaxis.grid(True)
+    ax.xaxis.grid(True)
+
+    # logarithmic y axis
+    plt.yscale('log')
+
+    # hide box, add digit separator
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+
+    outfile = FILENAME + '_runtime.png'
+    print('output: ', outfile)
+    plt.savefig(outfile, dpi=600)
+
+
+# EXECUTION
+plot_runtime()
