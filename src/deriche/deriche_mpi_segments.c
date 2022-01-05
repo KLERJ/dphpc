@@ -329,6 +329,9 @@ int main(int argc, char **argv) {
 
   deriche_vertical(w, bh, imgOutPriv, y2, requests);
 
+  for (int i = 0; i < n_requests; i++)
+    MPI_Wait(send_requests + i, MPI_STATUS_IGNORE);
+
   bm_stop(&benchmark_exclusive_compute);
   bm_stop(&benchmark_iter);
 
