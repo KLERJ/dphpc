@@ -1,7 +1,8 @@
 SIZE=MINI
 CFLAGS=-Wall -Wextra -Wno-comment -O3 -march=native -mavx -I polybench/utilities polybench/utilities/polybench.c -I src/benchmark src/benchmark/bm.c
-DUMP=
-EXTRA_FLAGS=-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME -D${SIZE}_DATASET ${DUMP}
+DUMP=-DPOLYBENCH_DUMP_ARRAYS
+TIME=-DPOLYBENCH_TIME
+EXTRA_FLAGS=-DPOLYBENCH_USE_C99_PROTO -D${SIZE}_DATASET ${TIME}
 
 SRC_DIR=./src
 BIN_DIR=./bin
@@ -23,6 +24,13 @@ endif
 ifdef SEG_WIDTH
 	EXTRA_FLAGS := ${EXTRA_FLAGS} -DSW=${SEG_WIDTH}
 endif
+
+ifdef DIM_W
+ifdef DIM_H
+		EXTRA_FLAGS := ${EXTRA_FLAGS} -DW=${DIM_W} -DH=${DIM_H}
+endif
+endif
+
 
 $(shell mkdir -p bin)
 UNAME := $(shell uname)
