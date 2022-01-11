@@ -551,6 +551,7 @@ int main(int argc, char **argv) {
     sscanf(argv[2], "%d", &tsteps);
 
     output_path = argv[3];
+    (void)output_path;
     benchmark_path = argv[4];
   } else {
     fprintf(stderr,
