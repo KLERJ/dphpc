@@ -1,5 +1,5 @@
 SIZE=MINI
-CFLAGS=-Wall -Wextra -Wno-comment -O3 -march=native -mavx -I polybench/utilities polybench/utilities/polybench.c -I src/benchmark src/benchmark/bm.c
+CFLAGS=-Wall -Wextra -Wno-comment -O3 -g -march=native -mavx -mavx2 -I polybench/utilities polybench/utilities/polybench.c -I src/benchmark src/benchmark/bm.c
 DUMP=-DPOLYBENCH_DUMP_ARRAYS
 TIME=-DPOLYBENCH_TIME
 EXTRA_FLAGS=-DPOLYBENCH_USE_C99_PROTO -D${SIZE}_DATASET ${TIME}
@@ -13,6 +13,7 @@ BINARY_SEIDEL2D_OMP=${BIN_DIR}/seidel-2d_omp
 BINARY_HEAT3D_OMP=${BIN_DIR}/heat-3d_omp
 BINARY_HEAT3D_MPI=${BIN_DIR}/heat-3d_mpi
 BINARY_HEAT3D_MPI_AVX2=${BIN_DIR}/heat-3d_mpi_avx2
+BINARY_HEAT3D_MPI_OMP=${BIN_DIR}/heat-3d_mpi_omp
 
 OUTPUT_DERICHE=deriche_${SIZE}_out.txt
 
@@ -88,6 +89,9 @@ heat-3d_omp:
 
 heat-3d_mpi:
 	${MPI_CC} ${CFLAGS}  ${SRC_DIR}/heat-3d/heat-3d_mpi.c  -o ${BINARY_HEAT3D_MPI} ${EXTRA_FLAGS}
+
+heat-3d_mpi_omp:
+	${MPI_CC} ${CFLAGS}  ${SRC_DIR}/heat-3d/heat-3d_mpi_omp.c  -fopenmp -o ${BINARY_HEAT3D_MPI_OMP} ${EXTRA_FLAGS}
 
 heat-3d_mpi_avx2:
 	${MPI_CC} ${CFLAGS}  ${SRC_DIR}/heat-3d/heat-3d_mpi_avx2.c  -o ${BINARY_HEAT3D_MPI_AVX2} ${EXTRA_FLAGS}
