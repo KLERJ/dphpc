@@ -105,6 +105,11 @@ function run_heat3d_mpi(){
 	# make clean
 	make $target MPI_CC="$CC" EXTRA_FLAGS="-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME $extra_flags" BIN_DIR=$RUN_DIR;
 
+
+	EXEC=$(printf "%s_%s" $target ${extra_flags: -1})
+
+	mv $RUN_DIR/$target $RUN_DIR/$EXEC
+
 	for ((i=$start_zero;i<${#N_THREADS[@]};i++))
 	do
 		n_threads=${N_THREADS[$i]}
@@ -119,7 +124,7 @@ function run_heat3d_mpi(){
 	
 		echo "Job $i $target running on $n_threads cores"
 		
-		bsub -W $TIME -n $n_threads -R "rusage[mem=$n_mem]" -J "$TARGET" -u "$USER_EMAIL" -oo $EXP_DIR/output_bsub.txt -eo $EXP_DIR/error_bsub.txt "export SCOREP_ENABLE_PROFILING=true; export SCOREP_ENABLE_TRACING=true; export SCOREP_EXPERIMENT_DIRECTORY=$EXP_DIR/trace; hwloc-ls --output-format xml > $EXP_DIR/hwloc.xml; lscpu > $EXP_DIR/cpu.txt;  mpirun -np $n_threads $RUN_DIR/$target $DN $DSTEPS $EXP_DIR/output_$DN.bin $EXP_DIR > $EXP_DIR/output.txt 2> $EXP_DIR/error.txt"
+		bsub -W $TIME -n $n_threads -R "rusage[mem=$n_mem]" -J "$TARGET" -u "$USER_EMAIL" -oo $EXP_DIR/output_bsub.txt -eo $EXP_DIR/error_bsub.txt "export SCOREP_ENABLE_PROFILING=true; export SCOREP_ENABLE_TRACING=true; export SCOREP_EXPERIMENT_DIRECTORY=$EXP_DIR/trace; hwloc-ls --output-format xml > $EXP_DIR/hwloc.xml; lscpu > $EXP_DIR/cpu.txt;  mpirun -np $n_threads $RUN_DIR/$EXEC $DN $DSTEPS $EXP_DIR/output_$DN.bin $EXP_DIR > $EXP_DIR/output.txt 2> $EXP_DIR/error.txt"
 
 	done
 }
@@ -233,11 +238,11 @@ function run_heat3d_baseline(){
 run_heat3d_mpi_omp_hybrid heat-3d_mpi_omp $USE_SCOREP ""
 
 run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=0" false 
-# run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=1" true # Skip 1 Core iter
-# run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=2" true # Skip 1 Core iter
+run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=1" true # Skip 1 Core iter
+run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=2" true # Skip 1 Core iter
 
+run_heat3d_omp heat-3d_omp true; # Skip 1 core iter
 
 # run_heat3d_mpi heat-3d_mpi_avx2 $USE_SCOREP "" true # Skip 1 Core iter
 run_heat3d_baseline;
 
-run_heat3d_omp heat-3d_omp true; # Skip 1 core iter

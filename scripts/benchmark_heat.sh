@@ -40,6 +40,11 @@ function run_heat3d_mpi(){
 	
 	# make clean
 	make $target MPI_CC="$CC" EXTRA_FLAGS="-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME $extra_flags" BIN_DIR=$RUN_DIR;
+	
+	EXEC=$(printf "%s_%s" $target ${extra_flags: -1})
+
+	mv $RUN_DIR/$target $RUN_DIR/$EXEC
+	
 	hwloc-ls --output-format xml > $RUN_DIR/hwloc.xml 
 	lscpu > $RUN_DIR/cpu.txt
 
@@ -61,7 +66,7 @@ function run_heat3d_mpi(){
 	
 		echo "Job $i $target running on $n_threads cores"
 
-		time mpirun -np $n_threads $RUN_DIR/$target $DN $DSTEPS $EXP_DIR/output_$DN.bin $EXP_DIR > $EXP_DIR/output.txt 2> $EXP_DIR/error.txt
+		time mpirun -np $n_threads $RUN_DIR/$EXEC $DN $DSTEPS $EXP_DIR/output_$DN.bin $EXP_DIR > $EXP_DIR/output.txt 2> $EXP_DIR/error.txt
 
 	done
 }
