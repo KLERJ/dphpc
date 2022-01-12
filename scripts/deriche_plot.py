@@ -12,25 +12,33 @@ parser.add_argument('results_path', help='root directory of the benchmark result
 parser.add_argument('dim',type=int,  help='input size, 2^dim x 2^dim')
 args = parser.parse_args()
 dim = args.dim
+print('dim=', dim)
 
 ########### GRAPH PROPERTIES ############
 
-POW_OF_2 = '$2^{' + str(dim) +  '}$'
+# handle weak scaling dimensions
+dim_w = dim % 100
+W_POW_OF_2 = '$2^{' + str(dim_w) +  '}$'
+if dim > 100:
+    dim_h = dim // 100
+else:
+    dim_h = dim_w
+H_POW_OF_2 = '$2^{' + str(dim_h) +  '}$'
 X_LABEL = '# cores'
 FILENAME = 'deriche_dim' + str(dim)
 AXIS_LABEL_COLOR = (.4, .4, .4)
 BACKGROUND_COLOR = '#eeeeee'
 HORIZONTAL_LINES_COLOR = '#fafafa'
 
-targets = ['deriche_mpi_baseline', 'deriche_mpi_rdma', 'deriche_omp', 'deriche_ref']
-sws = [1, 1, 1, 1]
-labels = ['MPI Alltoall', 'MPI RDMA SW = 1', 'OpenMP', 'polybench']
+targets = ['deriche_mpi_baseline', 'deriche_mpi_rdma', 'deriche_omp', 'deriche_ref', 'deriche_mpi_segments', 'deriche_mpi_segments']
+sws = [1, 1, 1, 1, 32, 1]
+labels = ['MPI Alltoall', 'MPI RDMA SW = 1', 'OpenMP', 'polybench', 'MPI Segments SW = 32', 'MPI Segments SW = 1']
 
 x_ticks = [x for x in range(6)]
 x_labels = [str(2**x) for x in range(6)]
-line_styles = ['b.-', 'r.-', 'g.-', 'y.-', 'm.-']
+line_styles = ['b.-', 'r.-', 'g.-', 'y.-', 'm.-', 'k.-']
 
-dims = [10, 11, 12, 13, 14]
+# dims = [10, 11, 12, 13, 14]
 
 ################# DATA ##################
 
@@ -88,7 +96,11 @@ def read_results_segments(root_dir_path):
                         bm_file_path = os.path.join(rep_dir_path, 'benchmark_' + str(i) + '.csv')
                         # Read file into list, append list to bm_results
                         bm_file_res = []
+                        # try:
                         file = open(bm_file_path, 'r')
+                        # except FileNotFoundError:
+                            # print(f'file {file} not found - ignoring error')
+                            # continue
                         for line in file:
                             bm_file_res.append(float(line))
                         bm_results.append((bm_file_res[3]))
@@ -151,7 +163,7 @@ def read_results_ref(root_dir_path):
     return results
 
 def runtime_for_dim(sw, target):
-    print('target: ', target)
+    # print('target: ', target)
 
     root_dir_path = os.path.join(args.results_path, target)
     # whether the results contains a 'SW' parameter or not
@@ -163,7 +175,7 @@ def runtime_for_dim(sw, target):
 
     results = {}
     if is_segmented:
-        print('sw: ', sw)
+        # print('sw: ', sw)
         results = read_results_segments(root_dir_path)
     elif is_mpi:
         results = read_results_default(root_dir_path)
@@ -201,8 +213,8 @@ def efficiency_speedup_for_dim(sw, target):
     dim_baseline_mean = np.mean(dim_baseline_reps)
     dim_baseline_var = np.var(dim_baseline_reps)
 
-    print('target: ', target)
-    print('baseline: ', dim_baseline_mean)
+    # print('target: ', target)
+    # print('baseline: ', dim_baseline_mean)
 
     root_dir_path = args.results_path + '/' + target
     # whether the results contains a 'SW' parameter or not
@@ -212,7 +224,7 @@ def efficiency_speedup_for_dim(sw, target):
 
     results = {}
     if is_segmented:
-        print('sw: ', sw)
+        # print('sw: ', sw)
         results = read_results_segments(root_dir_path)
     elif is_mpi:
         results = read_results_default(root_dir_path)
@@ -237,19 +249,20 @@ def efficiency_speedup_for_dim(sw, target):
 
     speedup = np.array([ dim_baseline_mean / runtime for runtime in dim_cpus_mean])
     efficiency = np.array([ s / cpus for (s, cpus) in zip(speedup, n_cpus)])
-    print('speedup: ', speedup)
+    # print('speedup: ', speedup)
 
     return speedup, efficiency
 
 def plot_runtime():
 
 
-    TITLE = 'Runtime - Strong Scaling - W,H = ' + POW_OF_2 +  ',' +  POW_OF_2 + ', AMD EPYC 7H12'
+    TITLE = 'Runtime - Strong Scaling - W,H = ' + W_POW_OF_2 +  ',' +  H_POW_OF_2
 
     Y_LABEL = 'Runtime [s]'
 
     fig, ax = plt.subplots()
     for i in range(len(targets)):
+        print('plotting label', labels[i])
         runtime, variance = runtime_for_dim(sws[i], targets[i])
         plt.plot(x_ticks, runtime, line_styles[i], label=labels[i])
 
@@ -286,12 +299,13 @@ def plot_runtime():
 
 def plot_speedup():
 
-    TITLE = 'Speedup - Strong Scaling - W,H = ' + POW_OF_2 +  ',' +  POW_OF_2 + ', AMD EPYC 7H12'
+    TITLE = 'Speedup - Strong Scaling - W,H = ' + W_POW_OF_2 +  ',' +  H_POW_OF_2
 
     Y_LABEL = 'Speedup'
 
     fig, ax = plt.subplots()
     for i in range(len(targets)):
+        print('plotting label=', labels[i], ' sw=', sws[i])
         if targets[i] != 'deriche_ref':
             speedup, efficiency = efficiency_speedup_for_dim(sws[i], targets[i])
             plt.plot(x_ticks, speedup, line_styles[i], label=labels[i])
@@ -316,7 +330,7 @@ def plot_speedup():
     ax.xaxis.grid(True)
 
     # logarithmic y axis
-    plt.yscale('log')
+    # plt.yscale('log')
 
     # hide box, add digit separator
     ax.spines['top'].set_visible(False)
@@ -329,4 +343,5 @@ def plot_speedup():
 
 
 # EXECUTION
-plot_runtime()
+# plot_runtime()
+plot_speedup()
