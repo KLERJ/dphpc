@@ -30,13 +30,13 @@ AXIS_LABEL_COLOR = (.4, .4, .4)
 BACKGROUND_COLOR = '#eeeeee'
 HORIZONTAL_LINES_COLOR = '#fafafa'
 
-targets = ['deriche_mpi_baseline', 'deriche_mpi_rdma', 'deriche_omp', 'deriche_ref', 'deriche_mpi_segments', 'deriche_mpi_segments']
-sws = [1, 1, 1, 1, 32, 1]
-labels = ['MPI Alltoall', 'MPI RDMA SW = 1', 'OpenMP', 'polybench', 'MPI Segments SW = 32', 'MPI Segments SW = 1']
+targets = ['deriche_mpi_baseline', 'deriche_mpi_rdma', 'deriche_mpi_rdma', 'deriche_omp', 'deriche_ref', 'deriche_mpi_segments', 'deriche_mpi_segments']
+sws = [1, 1, 16, 1, 1, 32, 1]
+labels = ['MPI Alltoall', 'MPI RDMA SW = 1',  'MPI RDMA SW = 16' , 'OpenMP', 'polybench', 'MPI Segments SW = 32', 'MPI Segments SW = 1']
 
 x_ticks = [x for x in range(6)]
 x_labels = [str(2**x) for x in range(6)]
-line_styles = ['b.-', 'r.-', 'g.-', 'y.-', 'm.-', 'k.-']
+line_styles = ['b.-', 'r.-', 'g.-','c.-',  'y.-', 'm.-', 'k.-']
 
 # dims = [10, 11, 12, 13, 14]
 
@@ -205,6 +205,60 @@ def runtime_for_dim(sw, target):
     return mean, variance
 
 
+# Weak scaling speedup data
+def speedup_for_dims(sw, target, dims):
+
+    baseline_root_path = os.path.join(args.results_path, 'deriche_ref')
+    results_ref = read_results_ref(baseline_root_path)
+    baseline_ws = []
+    for d in dims:
+        baseline = results_ref[d]
+        dim_baseline_reps = np.array([rep for rep in baseline.values()])
+        dim_baseline_mean = np.mean(dim_baseline_reps)
+        dim_baseline_var = np.var(dim_baseline_reps)
+        baseline_ws.append(dim_baseline_mean)
+
+    print('baseline_ws: ', baseline_ws)
+
+    root_dir_path = args.results_path + '/' + target
+    # whether the results contains a 'SW' parameter or not
+    is_segmented = (target == 'deriche_mpi_segments') | (target == 'deriche_mpi_rdma')
+    is_mpi = is_segmented | (target == 'deriche_mpi_baseline')
+    is_omp = (target == 'deriche_omp')
+
+    results = {}
+    if is_segmented:
+        # print('sw: ', sw)
+        results = read_results_segments(root_dir_path)
+    elif is_mpi:
+        results = read_results_default(root_dir_path)
+    elif is_omp:
+        results = read_results_omp(root_dir_path)
+    else:
+        print("Invalid target parameter")
+        exit(-1)
+
+    if is_segmented:
+        results = results[sw]
+
+    # Compute arithmetic mean and variance, speedup compared to baseline, efficiency
+    n_cpus = [1, 2, 4, 8, 16, 32]
+    ws_target = []
+    for i in range(len(n_cpus)):
+        cpu = n_cpus[i]
+        dim_results = results[dims[i]]
+        dim_cpu_reps = np.array([i for i in dim_results[cpu].values()])
+        dim_cpu_mean = np.mean(dim_cpu_reps)
+        dim_cpu_var = np.var(dim_cpu_reps)
+        ws_target.append(dim_cpu_mean)
+
+
+    speedup = np.array([ b / s for (s,b) in zip(ws_target,baseline_ws )])
+    print('speedup: ', speedup)
+
+    return speedup
+
+
 def efficiency_speedup_for_dim(sw, target):
 
     baseline_root_path = os.path.join(args.results_path, 'deriche_ref')
@@ -269,7 +323,7 @@ def plot_runtime():
     ax.legend()
 
     # title, axes labels
-    plt.title(TITLE, y=1.07, size=12)
+    # plt.title(TITLE, y=1.07, size=12)
     plt.ylabel(' ' + Y_LABEL, rotation=0, horizontalalignment='left', y=1.02, color=AXIS_LABEL_COLOR)
     plt.xlabel(X_LABEL, color=AXIS_LABEL_COLOR)
 
@@ -293,7 +347,7 @@ def plot_runtime():
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
 
-    outfile = FILENAME + '_speedup.png'
+    outfile = FILENAME + '_speedup.eps'
     print('output: ', outfile)
     plt.savefig(outfile, dpi=600)
 
@@ -313,7 +367,7 @@ def plot_speedup():
     ax.legend()
 
     # title, axes labels
-    plt.title(TITLE, y=1.07, size=12)
+    # plt.title(TITLE, y=1.07, size=12)
     plt.ylabel(' ' + Y_LABEL, rotation=0, horizontalalignment='left', y=1.02, color=AXIS_LABEL_COLOR)
     plt.xlabel(X_LABEL, color=AXIS_LABEL_COLOR)
 
@@ -337,11 +391,58 @@ def plot_speedup():
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
 
-    outfile = FILENAME + '_runtime.png'
+    outfile = FILENAME + '_speedup.eps'
+    print('output: ', outfile)
+    plt.savefig(outfile, dpi=600)
+
+def plot_speedup_ws():
+
+    TITLE = 'Speedup - Weak Scaling'
+
+    Y_LABEL = 'Speedup'
+
+    dims = [1112, 12, 1213, 13, 1314, 14]
+
+    fig, ax = plt.subplots()
+    for i in range(len(targets)):
+        print('plotting label=', labels[i], ' sw=', sws[i])
+        if targets[i] != 'deriche_ref':
+            speedup = speedup_for_dims(sws[i], targets[i], dims)
+            plt.plot(x_ticks, speedup, line_styles[i], label=labels[i])
+
+    ax.legend()
+
+    # title, axes labels
+    # plt.title(TITLE, y=1.07, size=12)
+    plt.ylabel(' ' + Y_LABEL, rotation=0, horizontalalignment='left', y=1.02, color=AXIS_LABEL_COLOR)
+    plt.xlabel(X_LABEL, color=AXIS_LABEL_COLOR)
+
+    # remove y axis ticks
+    plt.tick_params(axis='y', which='both', left=False, right=False)
+
+    # x ticks
+    ax.set_xticks(x_ticks, labels=x_labels)
+
+    # horizontal lines, background
+    ax.set_facecolor(BACKGROUND_COLOR)
+    ax.yaxis.grid(color=HORIZONTAL_LINES_COLOR, linewidth=1.0)
+    ax.yaxis.grid(True)
+    ax.xaxis.grid(True)
+
+    # logarithmic y axis
+    # plt.yscale('log')
+
+    # hide box, add digit separator
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+
+    outfile = FILENAME + '_ws.eps'
     print('output: ', outfile)
     plt.savefig(outfile, dpi=600)
 
 
 # EXECUTION
 # plot_runtime()
+# plot_speedup_ws()
 plot_speedup()
