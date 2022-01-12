@@ -21,6 +21,7 @@
 #include "bm.h"
 #include "heat-3d.h"
 #include <mpi.h>
+#include <omp.h>
 #include <stdbool.h>
 
 #ifndef Z_DIM
@@ -203,14 +204,15 @@ static void print_face(FILE *ptr, int ni, int nj, DATA_TYPE *A)
 
 /* Main computational kernel. The whole function will be timed,
    including the call and return. */
-static void compute_inner_step_kernel_heat_3d(int nx, int ny, int nz,
-                                              DATA_TYPE *__restrict__ A,
+static void compute_inner_step_kernel_heat_3d(const int nx, const int ny,
+                                              const int nz,
+                                              const DATA_TYPE *__restrict__ A,
                                               DATA_TYPE *__restrict__ B) {
   // Row major array
   // i loops over X
   // j loops over Y
   // k loops over Z (contiguous)
-
+#pragma omp parallel for collapse(3)
   for (int x = 1; x < nx - 1; x++) {
     for (int y = 1; y < ny - 1; y++) {
       for (int z = 1; z < nz - 1; z++) {
@@ -220,10 +222,11 @@ static void compute_inner_step_kernel_heat_3d(int nx, int ny, int nz,
   }
 }
 
-static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
-                                               DATA_TYPE *__restrict__ A,
+static void compute_border_step_kernel_heat_3d(const int nx, const int ny,
+                                               const int nz,
+                                               const DATA_TYPE *__restrict__ A,
                                                DATA_TYPE *__restrict__ B,
-                                               int neighbors[6],
+                                               const int neighbors[6],
                                                DATA_TYPE *neighborFaces[6]) {
 
   /*************************************************
@@ -310,6 +313,7 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
       }
 
       // Compute  FRONT-TOP Edge
+#pragma omp parallel for
       for (y = 1; y < ny - 1; y++) {
         *IDX(B, 0, y, 0, ny, nz) = UPDATE_STEP_GENERAL(
             IDX(A, 0, y, 0, ny, nz), IDX(A, 1, y, 0, ny, nz),
@@ -330,7 +334,8 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
       }
     }
 
-    // Compute FRONT Y-Z Face
+// Compute FRONT Y-Z Face
+#pragma omp parallel for
     for (y = 1; y < ny - 1; y++) {
       for (z = 1; z < nz - 1; z++) {
         *IDX(B, 0, y, z, ny, nz) = UPDATE_STEP_FRONT_FACE(
@@ -351,7 +356,8 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
             IDX(A, 0, 0, lastz - 1, ny, nz));
       }
 
-      // Compute  FRONT-BOTTOM Edge
+// Compute  FRONT-BOTTOM Edge
+#pragma omp parallel for
       for (y = 1; y < ny - 1; y++) {
         *IDX(B, 0, y, lastz, ny, nz) = UPDATE_STEP_GENERAL(
             IDX(A, 0, y, lastz, ny, nz), IDX(A, 1, y, lastz, ny, nz),
@@ -392,6 +398,7 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
       }
 
       // Compute BACK-TOP Edges
+#pragma omp parallel for
       for (y = 1; y < ny - 1; y++) {
         *IDX(B, lastx, y, 0, ny, nz) = UPDATE_STEP_GENERAL(
             IDX(A, lastx, y, 0, ny, nz),
@@ -414,7 +421,8 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
       }
     }
 
-    // Compute BACK Y-Z Face
+// Compute BACK Y-Z Face
+#pragma omp parallel for
     for (y = 1; y < ny - 1; y++) {
       for (z = 1; z < nz - 1; z++) {
         *IDX(B, nx - 1, y, z, ny, nz) = UPDATE_STEP_BACK_FACE(
@@ -469,6 +477,7 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
 
     // Compute  FRONT-LEFT Edge
     if (front)
+#pragma omp parallel for
       for (z = 1; z < nz - 1; z++) {
         *IDX(B, 0, 0, z, ny, nz) = UPDATE_STEP_GENERAL(
             IDX(A, 0, 0, z, ny, nz), IDX(A, 1, 0, z, ny, nz),
@@ -478,7 +487,8 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
             IDX(A, 0, 0, z + 1, ny, nz), IDX(A, 0, 0, z - 1, ny, nz));
       }
 
-    // Compute LEFT X-Z
+// Compute LEFT X-Z
+#pragma omp parallel for
     for (x = 1; x < nx - 1; x++) {
       for (z = 1; z < nz - 1; z++) {
         *IDX(B, x, 0, z, ny, nz) = UPDATE_STEP_LEFT_FACE(
@@ -488,6 +498,7 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
 
     // Compute BACK-LEFT Edge
     if (back)
+#pragma omp parallel for
       for (z = 1; z < nz - 1; z++) {
         *IDX(B, lastx, 0, z, ny, nz) = UPDATE_STEP_GENERAL(
             IDX(A, lastx, 0, z, ny, nz), IDX(A, lastx - 1, 0, z, ny, nz),
@@ -499,6 +510,7 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
 
     // Compute LEFT-TOP Edge
     if (top)
+#pragma omp parallel for
       for (x = 1; x < nx - 1; x++) {
         *IDX(B, x, 0, 0, ny, nz) = UPDATE_STEP_GENERAL(
             IDX(A, x, 0, 0, ny, nz), IDX(A, x - 1, 0, 0, ny, nz),
@@ -510,6 +522,7 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
 
     // Compute LEFT-BOTTOM Edge
     if (bottom)
+#pragma omp parallel for
       for (x = 1; x < nx - 1; x++) {
         *IDX(B, x, 0, lastz, ny, nz) = UPDATE_STEP_GENERAL(
             IDX(A, x, 0, lastz, ny, nz), IDX(A, x - 1, 0, lastz, ny, nz),
@@ -527,6 +540,7 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
 
     // Compute  FRONT-RIGHT Edge
     if (front)
+#pragma omp parallel for
       for (z = 1; z < nz - 1; z++) {
         *IDX(B, 0, lasty, z, ny, nz) = UPDATE_STEP_GENERAL(
             IDX(A, 0, lasty, z, ny, nz), IDX(A, 1, lasty, z, ny, nz),
@@ -536,7 +550,8 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
             IDX(A, 0, lasty, z - 1, ny, nz));
       }
 
-    // Compute RIGHT X-Z Face
+// Compute RIGHT X-Z Face
+#pragma omp parallel for
     for (x = 1; x < nx - 1; x++) {
       for (z = 1; z < nz - 1; z++) {
         *IDX(B, x, ny - 1, z, ny, nz) = UPDATE_STEP_RIGHT_FACE(
@@ -547,6 +562,7 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
 
     // Compute BACK-RIGHT Edge
     if (back)
+#pragma omp parallel for
       for (z = 1; z < nz - 1; z++) {
         *IDX(B, lastx, lasty, z, ny, nz) = UPDATE_STEP_GENERAL(
             IDX(A, lastx, lasty, z, ny, nz),
@@ -560,6 +576,7 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
 
     // Compute RIGHT-TOP Edge
     if (top)
+#pragma omp parallel for
       for (x = 1; x < nx - 1; x++) {
         *IDX(B, x, lasty, 0, ny, nz) = UPDATE_STEP_GENERAL(
             IDX(A, x, lasty, 0, ny, nz), IDX(A, x - 1, lasty, 0, ny, nz),
@@ -571,6 +588,7 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
 
     // Compute RIGHT-BOTTOM Edge
     if (bottom)
+#pragma omp parallel for
       for (x = 1; x < nx - 1; x++) {
         *IDX(B, x, lasty, lastz, ny, nz) = UPDATE_STEP_GENERAL(
             IDX(A, x, lasty, lastz, ny, nz),
@@ -587,7 +605,8 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
    * TOP
    * **********/
   if (top) {
-    // Compute TOP X-Y Face
+// Compute TOP X-Y Face
+#pragma omp parallel for
     for (x = 1; x < nx - 1; x++) {
       for (y = 1; y < ny - 1; y++) {
         *IDX(B, x, y, 0, ny, nz) = UPDATE_STEP_TOP_FACE(
@@ -600,7 +619,8 @@ static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
    * BOTTOM
    * **********/
   if (bottom) {
-    // Compute BOTTOM X-Y Face
+// Compute BOTTOM X-Y Face
+#pragma omp parallel for
     for (x = 1; x < nx - 1; x++) {
       for (y = 1; y < ny - 1; y++) {
         *IDX(B, x, y, nz - 1, ny, nz) = UPDATE_STEP_BOTTOM_FACE(
@@ -676,6 +696,13 @@ int main(int argc, char **argv) {
 #endif
 
   if (rank == 0) {
+#pragma omp parallel
+    {
+      int i = omp_get_num_threads();
+#pragma omp single
+      { printf("OMP Num Threads: %d\n", i); }
+    }
+
     printf("Processors: %d N: %d, Steps:%d\n", p, nx, tsteps);
   }
 

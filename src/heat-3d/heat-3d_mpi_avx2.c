@@ -26,6 +26,16 @@
 
 // #define DEBUG
 
+#ifndef Z_DIM
+#define Z_DIM 0
+#endif
+#ifndef Y_DIM
+#define Y_DIM 0
+#endif
+#ifndef X_DIM
+#define X_DIM 0
+#endif
+
 #define MPI_DATATYPE MPI_DOUBLE
 #define IDX(ARRAY, X, Y, Z, NY, NZ)                                            \
   ((ARRAY) + ((X) * (NY) * (NZ)) + ((Y) * (NZ)) + (Z))
@@ -202,6 +212,8 @@ static void compute_inner_step_kernel_heat_3d(int nx, int ny, int nz,
   // j loops over Y
   // k loops over Z (contiguous)
 
+#if defined(OLD)
+
   // Constant arrays
   double a[4] = {0.125, 0.125, 0.125, 0.125};
   __m256d consts1 = _mm256_loadu_pd(a);
@@ -285,6 +297,244 @@ static void compute_inner_step_kernel_heat_3d(int nx, int ny, int nz,
       }
     }
   }
+
+#elif defined(NEW)
+
+  double a[4] = {0.125, 0.125, 0.125, 0.125};
+  __m256d consts1 = _mm256_loadu_pd(a);
+
+  double m1[4] = {0.125, 0.25, 0.125, 0};
+  __m256d mask1 = _mm256_loadu_pd(m1);
+
+  double m2[4] = {0, 0.125, 0.25, 0.125};
+  __m256d mask2 = _mm256_loadu_pd(m2);
+
+  int i, j, k;
+
+  for (i = 1; i < nx - 1; i += 2) {
+    for (j = 1; j < ny - 1; j += 2) {
+      for (k = 1; k < nz - 5; k += 4) {
+        // Note: there are comments below showing AVX register contents, from
+        // highest bits to lowest.
+
+        // Summing elements not from the z axis
+        // __m256d ip1 =
+        //     _mm256_loadu_pd(IDX(A, i + 1, j, k, ny, nz)); // Back column
+        // __m256d im1 =
+        //     _mm256_loadu_pd(IDX(A, i - 1, j, k, ny, nz)); // Front column
+        // __m256d jp1 =
+        //     _mm256_loadu_pd(IDX(A, i, j + 1, k, ny, nz)); // Right column
+        // __m256d jm1 =
+        //     _mm256_loadu_pd(IDX(A, i, j - 1, k, ny, nz)); // Left column
+
+        /*
+              b0 b1
+           l1 c2 c3 r1
+           l0 c0 c1 r0
+              f0 f1
+
+
+        */
+
+        /********************
+         * Compute C0
+         * ******************/
+        __m256d c0u =
+            _mm256_loadu_pd(IDX(A, i, j, k - 1, ny, nz)); // Center upper
+        __m256d c0l =
+            _mm256_loadu_pd(IDX(A, i, j, k + 1, ny, nz)); // Center Lower
+
+        __m256d c2u = _mm256_loadu_pd(IDX(A, i + 1, j, k - 1, ny, nz)); // Back
+        __m256d c2l = _mm256_loadu_pd(IDX(A, i + 1, j, k + 1, ny, nz)); // Back
+        __m256d c1u = _mm256_loadu_pd(IDX(A, i, j + 1, k - 1, ny, nz)); // Right
+        __m256d c1l = _mm256_loadu_pd(IDX(A, i, j + 1, k + 1, ny, nz)); // Right
+
+        // Convert centers to sides
+        __m256d middle_upper = _mm256_permute4x64_pd(c1u, 0xf9); // Shift right
+        __m256d middle_lower = _mm256_permute4x64_pd(c1l, 0x90); // Shift left
+        __m256d c1middle =
+            _mm256_blend_pd(middle_upper, middle_lower,
+                            0x0c); // Blend the two registers together
+
+        middle_upper = _mm256_permute4x64_pd(c2u, 0xf9); // Shift right
+        middle_lower = _mm256_permute4x64_pd(c2l, 0x90); // Shift left
+        __m256d c2middle =
+            _mm256_blend_pd(middle_upper, middle_lower,
+                            0x0c); // Blend the two registers together
+
+        __m256d f0 = _mm256_loadu_pd(IDX(A, i - 1, j, k, ny, nz)); // Front
+        __m256d l0 = _mm256_loadu_pd(IDX(A, i, j - 1, k, ny, nz)); // Left
+        // Compute Sides
+        __m256d total = _mm256_add_pd(f0, l0);
+        total = _mm256_add_pd(total, c1middle);
+        total = _mm256_add_pd(total, c2middle);
+        total = _mm256_mul_pd(total, consts1);
+
+        // Compute center
+        __m256d k1 = _mm256_mul_pd(c0u, mask1);
+        __m256d k2 = _mm256_mul_pd(c0u, mask2);
+
+        __m256d sumU = _mm256_hadd_pd(k1, k2);
+        sumU = _mm256_permute4x64_pd(
+            sumU, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+        sumU = _mm256_hadd_pd(sumU, sumU);
+        sumU = _mm256_permute4x64_pd(
+            sumU, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+
+        __m256d k3 = _mm256_mul_pd(c0l, mask1);
+        __m256d k4 = _mm256_mul_pd(c0l, mask2);
+
+        __m256d sumL = _mm256_hadd_pd(k1, k2);
+        sumL = _mm256_permute4x64_pd(
+            sumL, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+        sumL = _mm256_hadd_pd(sumL, sumL);
+        sumU = _mm256_permute4x64_pd(
+            sumU, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+
+        __m256d center = _mm256_blend_pd(sumU, sumL, 0x0c);
+        total = _mm256_add_pd(total, center);
+
+        // Todo Add center
+
+        _mm256_storeu_pd(IDX(B, i, j, k, ny, nz), total);
+
+        /********************
+         * Compute C3
+         * ******************/
+
+        __m256d b1 = _mm256_loadu_pd(IDX(A, i + 2, j + 1, k, ny, nz)); // Back
+        __m256d r1 = _mm256_loadu_pd(IDX(A, i + 1, j + 2, k, ny, nz)); // Right
+
+        total = _mm256_add_pd(b1, r1);
+        total = _mm256_add_pd(total, c1middle);
+        total = _mm256_add_pd(total, c2middle);
+        total = _mm256_mul_pd(total, consts1);
+
+        __m256d c3u = _mm256_loadu_pd(
+            IDX(A, i + 1, j + 1, k - 1, ny, nz)); // Center upper
+        __m256d c3l = _mm256_loadu_pd(
+            IDX(A, i + 1, j + 1, k + 1, ny, nz)); // Center Lower
+
+        k1 = _mm256_mul_pd(c3u, mask1);
+        k2 = _mm256_mul_pd(c3u, mask2);
+
+        sumU = _mm256_hadd_pd(k1, k2);
+        sumU = _mm256_permute4x64_pd(
+            sumU, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+        sumU = _mm256_hadd_pd(sumU, sumU);
+        sumU = _mm256_permute4x64_pd(
+            sumU, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+
+        k3 = _mm256_mul_pd(c3l, mask1);
+        k4 = _mm256_mul_pd(c3l, mask2);
+
+        sumL = _mm256_hadd_pd(k1, k2);
+        sumL = _mm256_permute4x64_pd(
+            sumL, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+        sumL = _mm256_hadd_pd(sumL, sumL);
+        sumU = _mm256_permute4x64_pd(
+            sumU, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+
+        center = _mm256_blend_pd(sumU, sumL, 0x0c);
+        total = _mm256_add_pd(total, center);
+
+        _mm256_storeu_pd(IDX(B, i + 1, j + 1, k, ny, nz), total);
+
+        /********************
+         * Compute C1
+         * ******************/
+
+        middle_upper = _mm256_permute4x64_pd(c0u, 0xf9); // Shift right
+        middle_lower = _mm256_permute4x64_pd(c0l, 0x90); // Shift left
+        __m256d c0middle =
+            _mm256_blend_pd(middle_upper, middle_lower,
+                            0x0c); // Blend the two registers together
+
+        middle_upper = _mm256_permute4x64_pd(c3u, 0xf9); // Shift right
+        middle_lower = _mm256_permute4x64_pd(c3l, 0x90); // Shift left
+        __m256d c3middle =
+            _mm256_blend_pd(middle_upper, middle_lower,
+                            0x0c); // Blend the two registers together
+
+        __m256d f1 = _mm256_loadu_pd(IDX(A, i - 1, j + 1, k, ny, nz)); // Front
+        __m256d r0 = _mm256_loadu_pd(IDX(A, i, j + 2, k, ny, nz));     // Right
+
+        total = _mm256_add_pd(f1, r0);
+        total = _mm256_add_pd(total, c0middle);
+        total = _mm256_add_pd(total, c3middle);
+        total = _mm256_mul_pd(total, consts1);
+
+        k1 = _mm256_mul_pd(c1u, mask1);
+        k2 = _mm256_mul_pd(c1u, mask2);
+
+        sumU = _mm256_hadd_pd(k1, k2);
+        sumU = _mm256_permute4x64_pd(
+            sumU, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+        sumU = _mm256_hadd_pd(sumU, sumU);
+        sumU = _mm256_permute4x64_pd(
+            sumU, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+
+        k3 = _mm256_mul_pd(c1l, mask1);
+        k4 = _mm256_mul_pd(c1l, mask2);
+
+        sumL = _mm256_hadd_pd(k1, k2);
+        sumL = _mm256_permute4x64_pd(
+            sumL, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+        sumL = _mm256_hadd_pd(sumL, sumL);
+        sumU = _mm256_permute4x64_pd(
+            sumU, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+
+        center = _mm256_blend_pd(sumU, sumL, 0x0c);
+        total = _mm256_add_pd(total, center);
+
+        _mm256_storeu_pd(IDX(B, i, j + 1, k, ny, nz), total);
+
+        /********************
+         * Compute C2
+         * ******************/
+
+        __m256d b0 = _mm256_loadu_pd(IDX(A, i + 2, j, k, ny, nz));     // Back
+        __m256d l1 = _mm256_loadu_pd(IDX(A, i + 1, j - 1, k, ny, nz)); // Left
+
+        total = _mm256_add_pd(b0, l1);
+        total = _mm256_add_pd(total, c0middle);
+        total = _mm256_add_pd(total, c3middle);
+        total = _mm256_mul_pd(total, consts1);
+
+        k1 = _mm256_mul_pd(c2u, mask1);
+        k2 = _mm256_mul_pd(c2u, mask2);
+
+        sumU = _mm256_hadd_pd(k1, k2);
+        sumU = _mm256_permute4x64_pd(
+            sumU, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+        sumU = _mm256_hadd_pd(sumU, sumU);
+        sumU = _mm256_permute4x64_pd(
+            sumU, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+
+        k3 = _mm256_mul_pd(c2l, mask1);
+        k4 = _mm256_mul_pd(c2l, mask2);
+
+        sumL = _mm256_hadd_pd(k1, k2);
+        sumL = _mm256_permute4x64_pd(
+            sumL, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+        sumL = _mm256_hadd_pd(sumL, sumL);
+        sumU = _mm256_permute4x64_pd(
+            sumU, 0xd8); // Rearrange so that A1+B1, C1, B2, C2 + D2
+
+        center = _mm256_blend_pd(sumU, sumL, 0x0c);
+        total = _mm256_add_pd(total, center);
+
+        _mm256_storeu_pd(IDX(B, i + 1, j, k, ny, nz), total);
+      }
+      while (k < nz - 2) {
+        *IDX(B, i, j, k, ny, nz) = UPDATE_STEP(A, i, j, k, ny, nz);
+        k++;
+      }
+    }
+  }
+#else
+
+#endif
 }
 
 static void compute_border_step_kernel_heat_3d(int nx, int ny, int nz,
@@ -747,7 +997,7 @@ int main(int argc, char **argv) {
   }
 
   // Set up cubical topology topocomm
-  int periods[3] = {0, 0, 0};
+  int periods[3] = {X_DIM, Y_DIM, Z_DIM};
   MPI_Comm topocomm;
   MPI_Cart_create(comm, 3, pdims, periods, 0, &topocomm);
 

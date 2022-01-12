@@ -1,0 +1,248 @@
+#!/bin/bash
+
+. /cluster/apps/local/env2lmod.sh
+
+
+USE_SCOREP=${1:-false}
+
+DN=${2:-1024}  		   # Problem Size
+DSTEPS=${3:-250}        # Number of Steps
+
+if [ "$USE_SCOREP" = "true" ]; then
+	echo "Using Score-P with GCC 6.3.0 and OpenMPI 3.0.1"
+	module load gcc/6.3.0  openmpi/3.0.1 scorep/3.1
+	USE_SCOREP="true"
+    SCORE_P="_scorep"
+
+else
+	echo "Using GCC 9.3.0 and OpenMPI 4.0.2"
+	module load gcc/9.3.0  openmpi/4.0.2
+	USE_SCOREP="false"
+    SCORE_P=""
+fi
+
+
+TIME=04:00
+#CPU_MODEL=XeonE3_1585Lv5 # Euler III 4860 instances 
+#CPU_MODEL=XeonGold_6150 # Euler IV 10368 instances
+#CPU_MODEL=XeonGold_5118 # Euler V 8448 instances
+#CPU_MODEL=EPYC_7742 # Euler VI 27648 instances
+CPU_MODEL=EPYC_7H12 # Euler VII 37376 instances
+
+USER_EMAIL="$USER@student.ethz.ch"
+
+RUN_ID=$(date +%Y_%m_%d_%H%M%S)
+SUB_DIR="heat_bm"
+TARGET=$(printf "heat-3d_%d_%dx" $DN $DSTEPS)
+
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd $REPO_ROOT
+RUN_DIR=$(printf "%s/%s/%s_%s%s" $SCRATCH $SUB_DIR $RUN_ID $TARGET $SCORE_P)
+
+
+
+
+N_THREADS=256
+N_MEM=8192
+
+
+printf "Submitting Job %s with %d threads %dMB RAM on %s\n" $TARGET $N_THREADS $N_MEM $CPU_MODEL
+printf "Run Directory: %s\n" $RUN_DIR
+# printf "  3\r"
+# sleep 1
+# printf "  2\r"
+# sleep 1
+# printf "  1\r"
+# sleep 1
+
+
+
+mkdir -p $RUN_DIR
+# cp $REPO_ROOT/scripts/benchmark_heat.sh $RUN_DIR
+
+
+
+# bsub -W $TIME -n $N_THREADS -R "rusage[mem=$N_MEM]" -R "model=$CPU_MODEL" -J "$TARGET" -u "$USER_EMAIL" -oo $RUN_DIR/output.txt -eo $RUN_DIR/error.txt "$RUN_DIR/benchmark_heat.sh $RUN_DIR $USE_SCOREP $DN $DSTEPS"
+# bsub -W $TIME -n $N_THREADS -R "rusage[mem=$N_MEM]" -R "span[ptile=16]" -J "$TARGET" -u "$USER_EMAIL" -oo $RUN_DIR/output.txt -eo $RUN_DIR/error.txt "$RUN_DIR/benchmark_heat.sh $RUN_DIR $USE_SCOREP $DN $DSTEPS"
+
+# bsub -W $TIME -n $N_THREADS -R "rusage[mem=$N_MEM]" -J "$TARGET" -u "$USER_EMAIL" -oo $RUN_DIR/output.txt -eo $RUN_DIR/error.txt "$RUN_DIR/benchmark_heat.sh $RUN_DIR $USE_SCOREP $DN $DSTEPS"
+
+
+N_THREADS=(1 2 4 8 16 32 64 128 216 256)
+N_MEM=(200000 100000 50000 25000 12000 6000 3000 2000 2000 2000)
+
+MPI_OMP_THREADS=(4 8 16 32 64 128 256)
+MPI_THREADS=(2 2 2 4 4 8 16)
+OMP_THREADS=(2 4 8 8 16 16 16)
+N_MEM_HYB=(50000 25000 12000 6000 3000 2000 2000)
+
+
+
+
+
+function run_heat3d_mpi(){
+
+
+	target=$1
+	use_scorep=$2
+	extra_flags=$3
+	skip_first=${4:-false}
+
+	if [ "$skip_first" = "true" ]; then
+		start_zero=1
+	else
+		start_zero=0
+	fi
+
+	if [ "$use_scorep" = "true" ]; then
+		echo "Using Scorep"
+		CC='scorep mpicc'
+	else
+		CC=mpicc
+	fi
+	
+	# make clean
+	make $target MPI_CC="$CC" EXTRA_FLAGS="-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME $extra_flags" BIN_DIR=$RUN_DIR;
+
+
+	EXEC=$(printf "%s_%s" $target ${extra_flags: -1})
+
+	mv $RUN_DIR/$target $RUN_DIR/$EXEC
+
+	for ((i=$start_zero;i<${#N_THREADS[@]};i++))
+	do
+		n_threads=${N_THREADS[$i]}
+		n_mem=${N_MEM[$i]}
+	
+		EXP_NAME=$(printf "%s_%dx_%dsize%s" $target $n_threads $DN $extra_flags)
+
+	
+		EXP_DIR="$RUN_DIR/$EXP_NAME"
+		mkdir -p $EXP_DIR
+		mkdir $EXP_DIR/trace
+	
+		echo "Job $i $target running on $n_threads cores"
+		
+		bsub -W $TIME -n $n_threads -R "rusage[mem=$n_mem]" -J "$TARGET" -u "$USER_EMAIL" -oo $EXP_DIR/output_bsub.txt -eo $EXP_DIR/error_bsub.txt "export SCOREP_ENABLE_PROFILING=true; export SCOREP_ENABLE_TRACING=true; export SCOREP_EXPERIMENT_DIRECTORY=$EXP_DIR/trace; hwloc-ls --output-format xml > $EXP_DIR/hwloc.xml; lscpu > $EXP_DIR/cpu.txt;  mpirun -np $n_threads $RUN_DIR/$EXEC $DN $DSTEPS $EXP_DIR/output_$DN.bin $EXP_DIR > $EXP_DIR/output.txt 2> $EXP_DIR/error.txt"
+
+	done
+}
+
+
+
+
+
+function run_heat3d_mpi_omp_hybrid(){
+
+
+	target=$1
+	use_scorep=$2
+	extra_flags=$3
+	
+
+	if [ "$use_scorep" = "true" ]; then
+		echo "Using Scorep"
+		CC='scorep mpicc'
+	else
+		CC=mpicc
+	fi
+	
+	# make clean
+	make $target MPI_CC="$CC" EXTRA_FLAGS=" -DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME $extra_flags" BIN_DIR=$RUN_DIR;
+
+	for ((i=0;i<${#MPI_OMP_THREADS[@]};i++))
+	do
+		n_threads=${MPI_OMP_THREADS[$i]}
+		mpi_threads=${MPI_THREADS[$i]}
+		omp_threads=${OMP_THREADS[$i]}
+		n_mem=${N_MEM_HYB[$i]}
+
+	
+		EXP_NAME=$(printf "%s_%dx_%dsize_%dx%d_%s" $target $n_threads $DN $mpi_threads $omp_threads $extra_flags)
+
+	
+		EXP_DIR="$RUN_DIR/$EXP_NAME"
+		mkdir -p $EXP_DIR
+		mkdir $EXP_DIR/trace
+	
+
+		
+	
+		echo "Job $i $target running on $mpi_threads x $omp_threads = $n_threads cores"
+		
+		bsub -W $TIME -n $n_threads -R "span[ptile=$omp_threads]" -R "rusage[mem=$n_mem]" -J "$TARGET" -u "$USER_EMAIL" -oo $EXP_DIR/output_bsub.txt -eo $EXP_DIR/error_bsub.txt "export SCOREP_ENABLE_PROFILING=true; export SCOREP_ENABLE_TRACING=true; export SCOREP_EXPERIMENT_DIRECTORY=$EXP_DIR/trace; export OMP_NUM_THREADS=$omp_threads; hwloc-ls --output-format xml > $EXP_DIR/hwloc.xml; lscpu > $EXP_DIR/cpu.txt;  unset LSB_AFFINITY_HOSTFILE; mpirun -n $mpi_threads --map-by node:PE=$omp_threads $RUN_DIR/$target $DN $DSTEPS $EXP_DIR/output_$DN.bin $EXP_DIR > $EXP_DIR/output.txt 2> $EXP_DIR/error.txt" 
+
+	done
+}
+
+
+function run_heat3d_omp(){
+
+
+	target=$1
+
+	skip_first=${2:-false}
+
+	if [ "$skip_first" = "true" ]; then
+		start_zero=1
+	else
+		start_zero=0
+	fi
+
+	
+	# make clean
+	hwloc-ls --output-format xml > $RUN_DIR/hwloc.xml 
+	lscpu > $RUN_DIR/cpu.txt
+
+	for ((i=0;i<${#N_THREADS[@]};i++))
+	do
+		n_threads=${N_THREADS[$i]}
+		n_mem=${N_MEM[$i]}
+
+			
+		EXP_NAME=$(printf "%s_%dx_%dsize" $target $n_threads $DN)
+	
+		EXP_DIR="$RUN_DIR/$EXP_NAME"
+		mkdir -p $EXP_DIR
+		mkdir $EXP_DIR/trace
+	
+	   
+
+	
+		echo "Job $i $target running on $n_threads cores"
+
+		
+
+		bsub -W $TIME -n $n_threads -R "rusage[mem=$n_mem]" -J "$TARGET" -u "$USER_EMAIL" -oo $EXP_DIR/output_bsub.txt -eo $EXP_DIR/error_bsub.txt "export OMP_NUM_THREADS=$n_threads; make $target EXTRA_FLAGS='-DPOLYBENCH_USE_C99_PROTO -DPOLYBENCH_TIME -DN=$DN -DTSTEPS=$DSTEPS' BIN_DIR=$EXP_DIR; $EXP_DIR/$target $DN $DSTEPS $EXP_DIR/output_$DN.bin $EXP_DIR > $EXP_DIR/output.txt 2> $EXP_DIR/error.txt"
+
+	done
+}
+
+
+function run_heat3d_baseline(){
+	cd polybench/stencils/heat-3d
+
+	make clean
+	make EXTRA_FLAGS=" -DPOLYBENCH_TIME -DN=$DN -DTSTEPS=$DSTEPS" BIN_DIR=$RUN_DIR
+
+	EXP_NAME=$(printf "%s_%dx_%dsize" heat3d_baseline 1 $DN)
+	
+	EXP_DIR="$RUN_DIR/$EXP_NAME"
+	mkdir -p $EXP_DIR
+ 
+	bsub -W $TIME -n 1 -R "rusage[mem=200000]" -J "baseline" -u "$USER_EMAIL" -oo $EXP_DIR/output_bsub.txt -eo $EXP_DIR/error_bsub.txt "$RUN_DIR/heat-3d > $RUN_DIR/baseline_output.txt 2> $RUN_DIR/baseline_error.txt"
+	cd ../../..
+}
+
+run_heat3d_mpi_omp_hybrid heat-3d_mpi_omp $USE_SCOREP ""
+
+run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=0" false 
+run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=1" true # Skip 1 Core iter
+run_heat3d_mpi heat-3d_mpi $USE_SCOREP "-DZ_DIM=2" true # Skip 1 Core iter
+
+run_heat3d_omp heat-3d_omp true; # Skip 1 core iter
+
+# run_heat3d_mpi heat-3d_mpi_avx2 $USE_SCOREP "" true # Skip 1 Core iter
+run_heat3d_baseline;
+
