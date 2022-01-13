@@ -34,6 +34,8 @@ targets = ['deriche_mpi_baseline', 'deriche_mpi_rdma', 'deriche_mpi_rdma', 'deri
 sws = [1, 1, 16, 1, 1, 32, 1]
 labels = ['MPI Alltoall', 'MPI RDMA SW = 1',  'MPI RDMA SW = 16' , 'OpenMP', 'polybench', 'MPI Segments SW = 32', 'MPI Segments SW = 1']
 
+
+n_cpus = [1, 2, 4, 8, 16, 32]
 x_ticks = [x for x in range(6)]
 x_labels = [str(2**x) for x in range(6)]
 line_styles = ['b.-', 'r.-', 'g.-','c.-',  'y.-', 'm.-', 'k.-']
@@ -171,8 +173,6 @@ def runtime_for_dim(sw, target):
     is_mpi = is_segmented | (target == 'deriche_mpi_baseline')
     is_omp = (target == 'deriche_omp')
 
-    n_cpus = [1, 2, 4, 8, 16, 32]
-
     results = {}
     if is_segmented:
         # print('sw: ', sw)
@@ -242,7 +242,6 @@ def speedup_for_dims(sw, target, dims):
         results = results[sw]
 
     # Compute arithmetic mean and variance, speedup compared to baseline, efficiency
-    n_cpus = [1, 2, 4, 8, 16, 32]
     ws_target = []
     for i in range(len(n_cpus)):
         cpu = n_cpus[i]
@@ -296,7 +295,6 @@ def efficiency_speedup_for_dim(sw, target):
 
 
     # Compute arithmetic mean and variance, speedup compared to baseline, efficiency
-    n_cpus = [1, 2, 4, 8, 16, 32]
     dim_cpus_reps = np.array([[i for i in dim_results[cpu].values()] for cpu in n_cpus])
     dim_cpus_mean = np.array([ np.mean(reps) for reps in dim_cpus_reps ])
     dim_cpus_var = np.array([ np.var(reps) for reps in dim_cpus_reps ])
@@ -307,7 +305,7 @@ def efficiency_speedup_for_dim(sw, target):
 
     return speedup, efficiency
 
-def plot_runtime():
+def plot_runtime(log=False):
 
 
     TITLE = 'Runtime - Strong Scaling - W,H = ' + W_POW_OF_2 +  ',' +  H_POW_OF_2
@@ -340,18 +338,23 @@ def plot_runtime():
     ax.xaxis.grid(True)
 
     # logarithmic y axis
-    plt.yscale('log')
+    if log:
+        plt.semilogy(base=2)
 
     # hide box, add digit separator
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
 
-    outfile = FILENAME + '_speedup.eps'
+    filename = FILENAME
+    if log:
+        filename = filename + '_log'
+    outfile = filename + '_ws.eps'
+
     print('output: ', outfile)
     plt.savefig(outfile, dpi=600)
 
-def plot_speedup():
+def plot_speedup(log=False):
 
     TITLE = 'Speedup - Strong Scaling - W,H = ' + W_POW_OF_2 +  ',' +  H_POW_OF_2
 
@@ -364,15 +367,22 @@ def plot_speedup():
             speedup, efficiency = efficiency_speedup_for_dim(sws[i], targets[i])
             plt.plot(x_ticks, speedup, line_styles[i], label=labels[i])
 
-    ax.legend()
+    ax.legend(fontsize='small')
+    plt.plot(x_ticks, n_cpus, 'y:', label='Linear Bound')
 
     # title, axes labels
     # plt.title(TITLE, y=1.07, size=12)
     plt.ylabel(' ' + Y_LABEL, rotation=0, horizontalalignment='left', y=1.02, color=AXIS_LABEL_COLOR)
     plt.xlabel(X_LABEL, color=AXIS_LABEL_COLOR)
 
+
+    # logarithmic y axis
+    if log:
+        plt.semilogy(base=2)
+
     # remove y axis ticks
     plt.tick_params(axis='y', which='both', left=False, right=False)
+    # ax.set_yticks(n_cpus)
 
     # x ticks
     ax.set_xticks(x_ticks, labels=x_labels)
@@ -383,19 +393,21 @@ def plot_speedup():
     ax.yaxis.grid(True)
     ax.xaxis.grid(True)
 
-    # logarithmic y axis
-    # plt.yscale('log')
+
 
     # hide box, add digit separator
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
 
-    outfile = FILENAME + '_speedup.eps'
+    filename = FILENAME
+    if log:
+        filename = filename + '_log'
+    outfile = filename + '_speedup.eps'
     print('output: ', outfile)
     plt.savefig(outfile, dpi=600)
 
-def plot_speedup_ws():
+def plot_speedup_ws(log=False):
 
     TITLE = 'Speedup - Weak Scaling'
 
@@ -410,7 +422,10 @@ def plot_speedup_ws():
             speedup = speedup_for_dims(sws[i], targets[i], dims)
             plt.plot(x_ticks, speedup, line_styles[i], label=labels[i])
 
-    ax.legend()
+
+    plt.plot(x_ticks, n_cpus, 'y:', label='Linear Bound')
+
+    ax.legend(fontsize='small')
 
     # title, axes labels
     # plt.title(TITLE, y=1.07, size=12)
@@ -430,19 +445,27 @@ def plot_speedup_ws():
     ax.xaxis.grid(True)
 
     # logarithmic y axis
-    # plt.yscale('log')
+    if log:
+        plt.semilogy(base=2)
 
     # hide box, add digit separator
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
 
-    outfile = FILENAME + '_ws.eps'
+    filename = FILENAME
+    if log:
+        filename = filename + '_log'
+    outfile = filename + '_ws.eps'
+
     print('output: ', outfile)
     plt.savefig(outfile, dpi=600)
 
 
 # EXECUTION
 # plot_runtime()
-# plot_speedup_ws()
+# plot_runtime(log=True)
+plot_speedup_ws()
 plot_speedup()
+plot_speedup_ws(log=True)
+plot_speedup(log=True)
