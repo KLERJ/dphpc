@@ -265,11 +265,36 @@ def plot_by_size(subfolder):
 
     plt.savefig("heat-3d_per_iter_" + prob_size + "_" + num_iters + "x.png")
 
+    return mpid0_total_runtime
+
     
 if __name__ == '__main__':
     subfolders = [ f.path for f in os.scandir(rootdir) if f.is_dir() ]
     print(subfolders)
 
-    for subfolder in subfolders:
-        plot_by_size(subfolder)
+    total_runtimes = {}
+    problem_sizes = [1024, 1536, 2048]
+    nprocs = [8, 16, 32,64, 128, 216, 256]
 
+    for subfolder in subfolders:
+        times = plot_by_size(subfolder)
+        if '1024' in subfolder:
+            total_runtimes[1024] = times
+        if '1536' in subfolder:
+            total_runtimes[1536] = times
+        if '2048' in subfolder:
+            total_runtimes[2048] = times
+    print(total_runtimes)
+
+    # Making weak scaling plots
+    fig, ax = plt.subplots()
+    for procs in nprocs:
+        time_by_proc = []
+        for psize in problem_sizes:
+            time_by_proc.append(total_runtimes[psize][procs])
+        plt.plot(problem_sizes, time_by_proc, '.-', label=str(procs)+' procs')
+
+    plt.legend()
+    plt.xlabel('Problem size')
+    plt.ylabel('Total runtime (s)')
+    plt.savefig("weak_scaling.png")
