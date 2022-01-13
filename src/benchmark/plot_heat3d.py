@@ -29,9 +29,14 @@ def plot_by_size(subfolder):
     mpid1_per_iter = {}
     mpid2_per_iter = {}
     omp_per_iter = {}
+    mpid0_comm_time = {}
+    mpid1_comm_time = {}
+    mpid2_comm_time = {}
     baseline_runtime = 0
-    instance_dirs = [ f.path for f in os.scandir(subfolder) if f.is_dir() ]
     dim = -1
+
+
+    instance_dirs = [ f.path for f in os.scandir(subfolder) if f.is_dir() ]
 
     for instance_dir in instance_dirs:
         instance_dir_info = instance_dir.split('_')
@@ -81,23 +86,42 @@ def plot_by_size(subfolder):
             if 'benchmark_' in benchmark_file:
                 with open(benchmark_file, 'r') as f:
                     if program_type == 'mpi':
-                        values = f.read().splitlines()[-1].split(',')
+                        lines = f.read().splitlines()
+                        values = lines[-1].split(',')
                         values = np.array([float(i) for i in values])
+                        comm_comp_time = lines[2].split(',')
+                        comm_comp_time = np.array([float(i) for i in comm_comp_time])
+                        comp_time = lines[3].split(',')
+                        comp_time = np.array([float(i) for i in comp_time])
+                        comm_time = comm_comp_time - comp_time
+                        
                         if dim == 0:
                             if nprocs in mpid0_per_iter:
                                 mpid0_per_iter[nprocs] = np.append(mpid0_per_iter[nprocs], values)
                             else:
                                 mpid0_per_iter[nprocs] = values
+                            if nprocs in mpid0_comm_time:
+                                mpid0_comm_time[nprocs] = np.append(mpid0_comm_time[nprocs], comm_time)
+                            else:
+                                mpid0_comm_time[nprocs] = values
                         if dim == 1:
                             if nprocs in mpid1_per_iter:
                                 mpid1_per_iter[nprocs] = np.append(mpid1_per_iter[nprocs], values)
                             else:
                                 mpid1_per_iter[nprocs] = values
+                            if nprocs in mpid1_comm_time:
+                                mpid1_comm_time[nprocs] = np.append(mpid1_comm_time[nprocs], comm_time)
+                            else:
+                                mpid1_comm_time[nprocs] = values
                         if dim == 2:
                             if nprocs in mpid2_per_iter:
                                 mpid2_per_iter[nprocs] = np.append(mpid2_per_iter[nprocs], values)
                             else:
                                 mpid2_per_iter[nprocs] = values
+                            if nprocs in mpid2_comm_time:
+                                mpid2_comm_time[nprocs] = np.append(mpid2_comm_time[nprocs], comm_time)
+                            else:
+                                mpid2_comm_time[nprocs] = values
                     elif program_type == 'omp':
                         values = f.read().splitlines()[0].split(',')
                         values = np.array([float(i) for i in values])
@@ -137,6 +161,22 @@ def plot_by_size(subfolder):
     ax.get_xaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
 
     plt.savefig("heat-3d_total_runtime_" + prob_size + "_" + num_iters + "x.png")
+
+    # Communication time histograms
+    for procs in mpid0_comm_time:
+        if procs != 1:
+            nbins = 15
+            times0 = mpid0_comm_time[procs]
+            times1 = mpid1_comm_time[procs]
+            times2 = mpid2_comm_time[procs]
+            fig, ax = plt.subplots()
+            plt.hist([times0, times1, times2], bins=nbins, histtype='bar', label=['d0','d1','d2'])
+            plt.legend()
+            plt.xlabel('Time (s)')
+            plt.title('Problem size: ' + prob_size + ', cores: ' + str(procs) + ', iterations: ' + num_iters)
+            #plt.hist(times1, bins=nbins, histtype='bar', stacked=True)
+            #plt.hist(times2, bins=nbins, histtype='bar', stacked=True)
+            plt.savefig("heat-3d_comm_time_nprocs" + str(procs) + "_" + prob_size + "_" + num_iters + "x.png")
 
     # Speedup plot
     if '1024' in subfolder:
