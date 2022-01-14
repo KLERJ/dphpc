@@ -367,8 +367,9 @@ def plot_speedup(log=False):
             speedup, efficiency = efficiency_speedup_for_dim(sws[i], targets[i])
             plt.plot(x_ticks, speedup, line_styles[i], label=labels[i])
 
-    ax.legend(fontsize='small')
     plt.plot(x_ticks, n_cpus, 'y:', label='Linear Bound')
+
+    ax.legend(fontsize='small')
 
     # title, axes labels
     # plt.title(TITLE, y=1.07, size=12)
