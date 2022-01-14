@@ -352,7 +352,7 @@ def plot_runtime(log=False):
     outfile = filename + '_ws.eps'
 
     print('output: ', outfile)
-    plt.savefig(outfile, dpi=600)
+    plt.savefig(outfile, dpi=600, bbox_inches='tight')
 
 def plot_speedup(log=False):
 
@@ -405,7 +405,7 @@ def plot_speedup(log=False):
         filename = filename + '_log'
     outfile = filename + '_speedup.eps'
     print('output: ', outfile)
-    plt.savefig(outfile, dpi=600)
+    plt.savefig(outfile, dpi=600, bbox_inches='tight')
 
 def plot_speedup_ws(log=False):
 
@@ -413,7 +413,14 @@ def plot_speedup_ws(log=False):
 
     Y_LABEL = 'Speedup'
 
-    dims = [1112, 12, 1213, 13, 1314, 14]
+    if dim == 14:
+        dims = [1112, 12, 1213, 13, 1314, 14]
+    elif dim == 13:
+        dims = [11, 1112, 12, 1213, 13, 1314]
+    elif dim == 12:
+        dims = [1011, 11, 1112, 12, 1213, 13]
+    else:
+        dims = [10, 1011, 11, 1112, 12, 1213]
 
     fig, ax = plt.subplots()
     for i in range(len(targets)):
@@ -453,19 +460,19 @@ def plot_speedup_ws(log=False):
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
 
-    filename = FILENAME
+    filename = 'deriche_' + str(dims[0])
     if log:
         filename = filename + '_log'
     outfile = filename + '_ws.eps'
 
     print('output: ', outfile)
-    plt.savefig(outfile, dpi=600)
+    plt.savefig(outfile, dpi=600, bbox_inches='tight')
 
 
 # EXECUTION
 # plot_runtime()
 # plot_runtime(log=True)
-plot_speedup_ws()
-plot_speedup()
+# plot_speedup_ws()
+# plot_speedup()
 plot_speedup_ws(log=True)
 plot_speedup(log=True)
