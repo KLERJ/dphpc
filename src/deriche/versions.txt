@@ -1,4 +1,0 @@
-# deriche_mpi_segments.c
-Changes compared to deriche_mpi_roberto.c:
-- Added restrict keyword to deriche_vertical/horizontal to enable more optimizations
-- Using MPI_Wait instead of MPI_Waitall to (somewhat) overlap vertical pass computation with communication
