@@ -1,2 +1,0 @@
-CC=gcc
-CFLAGS=-O3 -march=native -mavx -DPOLYBENCH_TIME -DPOLYBENCH_USE_C99_PROTO
